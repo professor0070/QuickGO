@@ -1,0 +1,29 @@
+name: quickgo_partner_app
+description: QuickGO combined vendor and rider Android app.
+publish_to: none
+version: 1.0.0+1
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  dio: ^5.7.0
+  firebase_messaging: ^15.1.6
+  quickgo_shared_api:
+    path: ../packages/shared_api
+  quickgo_shared_auth:
+    path: ../packages/shared_auth
+  quickgo_shared_models:
+    path: ../packages/shared_models
+  quickgo_shared_notifications:
+    path: ../packages/shared_notifications
+  quickgo_shared_ui:
+    path: ../packages/shared_ui
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
+

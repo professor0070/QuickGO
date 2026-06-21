@@ -1,0 +1,89 @@
+export type DomainEventMetadata = {
+  actorId?: string;
+  requestId?: string;
+  idempotencyKey?: string;
+  source: string;
+};
+
+export type DomainEventMap = {
+  "auth.otp_requested": {
+    phone: string;
+    purpose: "LOGIN";
+  };
+  "auth.otp_verified": {
+    userId: string;
+    phone: string;
+    roles: string[];
+  };
+  "order.placed": {
+    orderId: string;
+    orderNumber: string;
+    paymentMethod: string;
+  };
+  "order.cancelled": {
+    orderId: string;
+    reason: string;
+  };
+  "vendor.order_accepted": {
+    orderId: string;
+  };
+  "vendor.order_rejected": {
+    orderId: string;
+    reason: string;
+  };
+  "vendor.order_preparing": {
+    orderId: string;
+  };
+  "vendor.order_ready_for_pickup": {
+    orderId: string;
+  };
+  "delivery.rider_assigned": {
+    orderId: string;
+    riderId: string;
+    reason: string;
+  };
+  "delivery.rider_reassigned": {
+    orderId: string;
+    riderId: string;
+    reason: string;
+  };
+  "delivery.picked_up": {
+    orderId: string;
+  };
+  "delivery.delivered": {
+    orderId: string;
+  };
+  "payment.collected": {
+    orderId: string;
+    amount: number;
+  };
+  "payment.reconciled": {
+    paymentId: string;
+    reason: string;
+  };
+  "support.ticket_created": {
+    ticketId: string;
+    subject?: string;
+  };
+  "compliance.privacy_request_created": {
+    requestId: string;
+  };
+  "compliance.privacy_request_updated": {
+    requestId: string;
+  };
+};
+
+export type DomainEventName = keyof DomainEventMap;
+
+export type DomainEvent<TName extends DomainEventName = DomainEventName> = {
+  id: string;
+  name: TName;
+  payload: DomainEventMap[TName];
+  occurredAt: string;
+  metadata: DomainEventMetadata;
+};
+
+export type DomainEventHandler<TName extends DomainEventName = DomainEventName> = (
+  event: DomainEvent<TName>
+) => void | Promise<void>;
+

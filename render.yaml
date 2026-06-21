@@ -1,0 +1,62 @@
+services:
+  - type: web
+    name: quickgo-backend
+    env: node
+    rootDir: .
+    plan: starter
+    buildCommand: npm ci && npm --workspace backend run prisma:generate && npm --workspace backend run build
+    startCommand: npm --workspace backend run start
+    healthCheckPath: /api/v1/system/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_VERSION
+        value: 0.1.0
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: OTP_PROVIDER
+        value: mock
+      - key: MOCK_OTP_CODE
+        sync: false
+      - key: ADMIN_APP_URL
+        sync: false
+      - key: CUSTOMER_APP_DEEPLINK
+        value: quickgo://
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: FCM_SERVER_KEY_OR_SERVICE_ACCOUNT
+        sync: false
+      - key: CLOUD_STORAGE_PROVIDER
+        value: cloudinary
+      - key: FRESH_PRICE_MAX_AGE_HOURS
+        value: 24
+      - key: MVP_MANUAL_DISPATCH
+        value: true
+      - key: ORDER_CREATION_ENABLED
+        value: true
+      - key: COD_ON_DELIVERY_ENABLED
+        value: true
+      - key: UPI_ON_DELIVERY_ENABLED
+        value: true
+      - key: SUPPORT_INTAKE_ENABLED
+        value: true
+      - key: SERVICE_ZONE_LOCK_ENABLED
+        value: true
+      - key: MAINTENANCE_MODE
+        value: false
+      - key: VENDOR_ORDER_ACCEPTANCE_ENABLED
+        value: true
+      - key: RIDER_ASSIGNMENT_ENABLED
+        value: true
+      - key: PAYMENT_RECONCILIATION_ENABLED
+        value: true

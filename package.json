@@ -1,0 +1,35 @@
+{
+  "name": "quickgo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "QuickGO production MVP monorepo scaffold from the locked v1.9 documentation pack.",
+  "workspaces": [
+    "backend",
+    "web/admin_panel"
+  ],
+  "scripts": {
+    "check:blocklist": "node scripts/check-mvp-blocklist.mjs",
+    "check:openapi": "node scripts/check-openapi.mjs",
+    "check:structure": "node scripts/check-structure.mjs",
+    "check": "npm run check:structure && npm run check:blocklist && npm run check:openapi",
+    "backend:dev": "npm --workspace backend run start:dev",
+    "backend:test": "npm --workspace backend run test",
+    "admin:dev": "npm --workspace web/admin_panel run dev",
+    "admin:test": "npm --workspace web/admin_panel run test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@prisma/config": "^6.19.3",
+    "@prisma/debug": "^6.19.3",
+    "@prisma/engines-version": "^7.1.1-3.c2990dca591cba766e3b7ef5d9e8a84796e47ab7",
+    "@prisma/fetch-engine": "^6.19.3",
+    "@prisma/get-platform": "^6.19.3",
+    "c12": "^3.1.0",
+    "deepmerge-ts": "^7.1.5",
+    "effect": "^3.21.0",
+    "empathic": "^2.0.0",
+    "pkg-dir": "^4.2.0"
+  }
+}

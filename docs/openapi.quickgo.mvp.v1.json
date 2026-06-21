@@ -1,0 +1,1416 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "QuickGO MVP Backend API",
+    "version": "0.1.0",
+    "description": "Machine-readable contract for the implemented QuickGO MVP backend. All paths are served under /api/v1 and use the standard QuickGO response envelope."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/api/v1",
+      "description": "Local development"
+    },
+    {
+      "url": "https://staging-api.quickgo.example/api/v1",
+      "description": "Staging"
+    },
+    {
+      "url": "https://api.quickgo.example/api/v1",
+      "description": "Production"
+    }
+  ],
+  "tags": [
+    { "name": "System" },
+    { "name": "Auth" },
+    { "name": "Customer" },
+    { "name": "Catalog" },
+    { "name": "Cart" },
+    { "name": "Orders" },
+    { "name": "Vendor Mode" },
+    { "name": "Rider Mode" },
+    { "name": "Support" },
+    { "name": "Compliance" },
+    { "name": "Notifications" },
+    { "name": "Admin" },
+    { "name": "Reports" }
+  ],
+  "paths": {
+    "/system/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health check",
+        "operationId": "systemHealth",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Success" }
+        }
+      }
+    },
+    "/system/version": {
+      "get": {
+        "tags": ["System"],
+        "summary": "App version and maintenance status",
+        "operationId": "systemVersion",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Success" }
+        }
+      }
+    },
+    "/system/feature-flags": {
+      "get": {
+        "tags": ["System"],
+        "summary": "MVP runtime feature flags",
+        "operationId": "systemFeatureFlags",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Success" }
+        }
+      }
+    },
+    "/auth/send-otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Send OTP for login",
+        "operationId": "authSendOtp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendOtpRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/Success" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/auth/verify-otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Verify OTP and issue tokens",
+        "operationId": "authVerifyOtp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/VerifyOtpRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/Success" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Current user profile and partner mode eligibility",
+        "operationId": "authMe",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Success" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/customer/profile": {
+      "get": {
+        "tags": ["Customer"],
+        "summary": "Get customer profile",
+        "operationId": "customerProfile",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "patch": {
+        "tags": ["Customer"],
+        "summary": "Update customer profile",
+        "operationId": "customerUpdateProfile",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/UpdateCustomerProfile" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/customer/addresses": {
+      "get": {
+        "tags": ["Customer"],
+        "summary": "List customer addresses",
+        "operationId": "customerAddresses",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Customer"],
+        "summary": "Add customer address",
+        "operationId": "customerAddAddress",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/AddAddress" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/customer/serviceability": {
+      "post": {
+        "tags": ["Customer"],
+        "summary": "Check address coordinates against admin-managed service zones",
+        "operationId": "customerServiceability",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/Coordinates" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/Success" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/catalog/categories": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "List active categories",
+        "operationId": "catalogCategories",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/catalog/vendors": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "List approved open vendors",
+        "operationId": "catalogVendors",
+        "parameters": [
+          { "$ref": "#/components/parameters/CategoryQuery" },
+          { "$ref": "#/components/parameters/ServiceZoneQuery" }
+        ],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/catalog/vendors/{vendorId}": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Get vendor detail with available approved products",
+        "operationId": "catalogVendorDetail",
+        "parameters": [{ "$ref": "#/components/parameters/VendorId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/catalog/products": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "List approved available products",
+        "operationId": "catalogProducts",
+        "parameters": [
+          { "$ref": "#/components/parameters/VendorQuery" },
+          { "$ref": "#/components/parameters/CategoryIdQuery" }
+        ],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/cart": {
+      "get": {
+        "tags": ["Cart"],
+        "summary": "Get active single-vendor cart",
+        "operationId": "cartActive",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "delete": {
+        "tags": ["Cart"],
+        "summary": "Clear active cart",
+        "operationId": "cartClear",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/cart/items": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Add item to active cart",
+        "operationId": "cartAddItem",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/AddCartItem" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/Success" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/cart/items/{itemId}": {
+      "patch": {
+        "tags": ["Cart"],
+        "summary": "Update cart item quantity",
+        "operationId": "cartUpdateItem",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ItemId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/UpdateCartItem" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/orders": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "List current customer's orders",
+        "operationId": "ordersMine",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Create order from active cart",
+        "operationId": "ordersCreate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateOrder" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/Success" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "Get current customer's order detail",
+        "operationId": "ordersDetail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/orders/{orderId}/cancel": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Cancel order before vendor acceptance",
+        "operationId": "ordersCancel",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/ReasonOptional" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/Success" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/vendor/dashboard": {
+      "get": {
+        "tags": ["Vendor Mode"],
+        "summary": "Vendor dashboard",
+        "operationId": "vendorDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/shop-status": {
+      "patch": {
+        "tags": ["Vendor Mode"],
+        "summary": "Open or close shop",
+        "operationId": "vendorShopStatus",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/ShopStatus" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/orders": {
+      "get": {
+        "tags": ["Vendor Mode"],
+        "summary": "List vendor orders",
+        "operationId": "vendorOrders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/orders/{orderId}/accept": {
+      "post": {
+        "tags": ["Vendor Mode"],
+        "summary": "Accept placed order",
+        "operationId": "vendorAcceptOrder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/orders/{orderId}/reject": {
+      "post": {
+        "tags": ["Vendor Mode"],
+        "summary": "Reject placed order",
+        "operationId": "vendorRejectOrder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/ReasonRequired" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/orders/{orderId}/preparing": {
+      "post": {
+        "tags": ["Vendor Mode"],
+        "summary": "Mark order preparing or packing",
+        "operationId": "vendorPreparing",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/orders/{orderId}/ready": {
+      "post": {
+        "tags": ["Vendor Mode"],
+        "summary": "Mark order ready for pickup",
+        "operationId": "vendorReady",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/products": {
+      "get": {
+        "tags": ["Vendor Mode"],
+        "summary": "List vendor products",
+        "operationId": "vendorProducts",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/products/{productId}/availability": {
+      "patch": {
+        "tags": ["Vendor Mode"],
+        "summary": "Toggle product availability",
+        "operationId": "vendorProductAvailability",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ProductId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/ProductAvailability" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/vendor/products/{productId}/price": {
+      "patch": {
+        "tags": ["Vendor Mode"],
+        "summary": "Create approved product price update",
+        "operationId": "vendorProductPrice",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ProductId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/ProductPrice" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/dashboard": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "Rider dashboard",
+        "operationId": "riderDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/online-status": {
+      "patch": {
+        "tags": ["Rider Mode"],
+        "summary": "Set rider online status",
+        "operationId": "riderOnlineStatus",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/RiderOnlineStatus" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "List assigned rider orders",
+        "operationId": "riderOrders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "Get assigned order detail",
+        "operationId": "riderOrderDetail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}/picked-up": {
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Mark assigned order picked up",
+        "operationId": "riderPickedUp",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}/delivered": {
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Mark assigned order delivered",
+        "operationId": "riderDelivered",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}/payment-collected": {
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Record rider payment collection",
+        "operationId": "riderPaymentCollected",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/PaymentCollected" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/issues": {
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Report rider issue as a support ticket",
+        "operationId": "riderReportIssue",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateSupportTicket" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/support/tickets": {
+      "get": {
+        "tags": ["Support"],
+        "summary": "List current user's support tickets",
+        "operationId": "supportTickets",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Support"],
+        "summary": "Create support ticket",
+        "operationId": "supportCreateTicket",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateSupportTicket" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "List notifications for current user",
+        "operationId": "notificationsList",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Get unread notification count",
+        "operationId": "notificationsUnreadCount",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/notifications/{notificationId}/read": {
+      "patch": {
+        "tags": ["Notifications"],
+        "summary": "Mark notification read",
+        "operationId": "notificationsMarkRead",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/NotificationId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/legal-documents": {
+      "get": {
+        "tags": ["Compliance"],
+        "summary": "List active legal documents",
+        "operationId": "legalDocuments",
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/legal-documents/{documentId}/accept": {
+      "post": {
+        "tags": ["Compliance"],
+        "summary": "Accept legal document",
+        "operationId": "legalDocumentAccept",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/DocumentId" }],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/privacy-requests": {
+      "post": {
+        "tags": ["Compliance"],
+        "summary": "Create privacy or grievance request",
+        "operationId": "privacyRequestCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreatePrivacyRequest" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/dashboard": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Admin operations dashboard",
+        "operationId": "adminDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/orders": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List all orders for operations",
+        "operationId": "adminOrders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/orders/{orderId}": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get order detail for operations",
+        "operationId": "adminOrderDetail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/orders/{orderId}/assign-rider": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Assign rider manually with reason",
+        "operationId": "adminAssignRider",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/AssignRider" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/orders/{orderId}/reassign-rider": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Reassign rider manually with reason",
+        "operationId": "adminReassignRider",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/AssignRider" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/orders/{orderId}/cancel": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Cancel order with admin reason",
+        "operationId": "adminCancelOrder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/ReasonRequired" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/orders/{orderId}/payment-collected": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Record payment collection by operations",
+        "operationId": "adminPaymentCollected",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/PaymentCollected" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/payments/{paymentId}/reconcile": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Reconcile payment with admin reason",
+        "operationId": "adminReconcilePayment",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/PaymentId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/ReconcilePayment" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/vendors": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List vendors",
+        "operationId": "adminVendors",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create vendor and owner role",
+        "operationId": "adminCreateVendor",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateVendor" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/vendors/{vendorId}/status": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update vendor onboarding or operating status with reason",
+        "operationId": "adminVendorStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VendorId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/StatusWithReason" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/vendors/{vendorId}/compliance-documents": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List vendor compliance documents",
+        "operationId": "adminVendorComplianceDocuments",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VendorId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Store vendor compliance document reference",
+        "operationId": "adminCreateVendorComplianceDocument",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VendorId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateDocument" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/vendor-compliance-documents/{documentId}/review": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Review vendor compliance document with reason",
+        "operationId": "adminReviewVendorComplianceDocument",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/DocumentId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/ReviewDocument" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/riders": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List riders",
+        "operationId": "adminRiders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create rider and role",
+        "operationId": "adminCreateRider",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateRider" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/riders/{riderId}/status": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update rider onboarding or operating status with reason",
+        "operationId": "adminRiderStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/RiderId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/StatusWithReason" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/riders/{riderId}/kyc-documents": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List rider KYC documents",
+        "operationId": "adminRiderKycDocuments",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/RiderId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Store rider KYC document reference",
+        "operationId": "adminCreateRiderKycDocument",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/RiderId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateDocument" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/rider-kyc-documents/{documentId}/review": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Review rider KYC document with reason",
+        "operationId": "adminReviewRiderKycDocument",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/DocumentId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/ReviewDocument" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/products": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List products",
+        "operationId": "adminProducts",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create product for vendor",
+        "operationId": "adminCreateProduct",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateProduct" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/products/{productId}/status": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update product approval or availability status with reason",
+        "operationId": "adminProductStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ProductId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/StatusWithReason" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/categories/{categoryId}/status": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Activate or pause category with reason",
+        "operationId": "adminCategoryStatus",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/CategoryId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/CategoryStatus" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/service-zones": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List service zones",
+        "operationId": "adminServiceZones",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create service zone with reason",
+        "operationId": "adminCreateServiceZone",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/ServiceZone" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/service-zones/{zoneId}": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update service zone with reason",
+        "operationId": "adminUpdateServiceZone",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ZoneId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/ServiceZone" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/support-tickets": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List support tickets",
+        "operationId": "adminSupportTickets",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/support-tickets/{ticketId}": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update support ticket with reason",
+        "operationId": "adminSupportTicketUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TicketId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/SupportTicketUpdate" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/privacy-requests": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List privacy and grievance requests",
+        "operationId": "adminPrivacyRequests",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/privacy-requests/{requestId}": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update privacy or grievance request",
+        "operationId": "adminPrivacyRequestUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/PrivacyRequestUpdate" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List audit logs",
+        "operationId": "adminAuditLogs",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/reports/validation-dashboard": {
+      "get": {
+        "tags": ["Reports"],
+        "summary": "Validation dashboard metrics",
+        "operationId": "reportsValidationDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "OrderId": {
+        "name": "orderId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "VendorId": {
+        "name": "vendorId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "RiderId": {
+        "name": "riderId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "ProductId": {
+        "name": "productId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "CategoryId": {
+        "name": "categoryId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "ZoneId": {
+        "name": "zoneId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "PaymentId": {
+        "name": "paymentId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "ItemId": {
+        "name": "itemId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "DocumentId": {
+        "name": "documentId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "TicketId": {
+        "name": "ticketId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "RequestId": {
+        "name": "requestId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "NotificationId": {
+        "name": "notificationId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "CategoryQuery": {
+        "name": "category",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "CategoryIdQuery": {
+        "name": "category_id",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "ServiceZoneQuery": {
+        "name": "service_zone_id",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "VendorQuery": {
+        "name": "vendor_id",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string" }
+      }
+    },
+    "responses": {
+      "Success": {
+        "description": "Standard QuickGO success envelope",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/SuccessEnvelope" }
+          }
+        }
+      },
+      "Error": {
+        "description": "Standard QuickGO error envelope",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "requestBodies": {
+      "UpdateCustomerProfile": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateCustomerProfile" } } }
+      },
+      "AddAddress": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddAddress" } } }
+      },
+      "Coordinates": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Coordinates" } } }
+      },
+      "AddCartItem": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddCartItem" } } }
+      },
+      "UpdateCartItem": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateCartItem" } } }
+      },
+      "CreateOrder": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrder" } } }
+      },
+      "ReasonOptional": {
+        "required": false,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReasonOptional" } } }
+      },
+      "ReasonRequired": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReasonRequired" } } }
+      },
+      "ShopStatus": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShopStatus" } } }
+      },
+      "ProductAvailability": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductAvailability" } } }
+      },
+      "ProductPrice": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductPrice" } } }
+      },
+      "RiderOnlineStatus": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RiderOnlineStatus" } } }
+      },
+      "PaymentCollected": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentCollected" } } }
+      },
+      "CreateSupportTicket": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSupportTicket" } } }
+      },
+      "CreatePrivacyRequest": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePrivacyRequest" } } }
+      },
+      "PrivacyRequestUpdate": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrivacyRequestUpdate" } } }
+      },
+      "AssignRider": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssignRider" } } }
+      },
+      "ReconcilePayment": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReconcilePayment" } } }
+      },
+      "CreateVendor": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateVendor" } } }
+      },
+      "CreateRider": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateRider" } } }
+      },
+      "CreateProduct": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateProduct" } } }
+      },
+      "StatusWithReason": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatusWithReason" } } }
+      },
+      "CategoryStatus": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryStatus" } } }
+      },
+      "CreateDocument": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateDocument" } } }
+      },
+      "ReviewDocument": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewDocument" } } }
+      },
+      "ServiceZone": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceZone" } } }
+      },
+      "SupportTicketUpdate": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SupportTicketUpdate" } } }
+      }
+    },
+    "schemas": {
+      "SuccessEnvelope": {
+        "type": "object",
+        "required": ["success", "data", "message"],
+        "properties": {
+          "success": { "type": "boolean", "example": true },
+          "data": { "nullable": true },
+          "message": { "type": "string", "example": "OK" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "error"],
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "example": "VALIDATION_ERROR" },
+              "message": { "type": "string" },
+              "details": { "nullable": true }
+            }
+          }
+        }
+      },
+      "SendOtpRequest": {
+        "type": "object",
+        "required": ["phone", "purpose"],
+        "properties": {
+          "phone": { "type": "string", "example": "9876543210" },
+          "purpose": { "type": "string", "enum": ["LOGIN"] }
+        }
+      },
+      "VerifyOtpRequest": {
+        "type": "object",
+        "required": ["phone", "otp"],
+        "properties": {
+          "phone": { "type": "string", "example": "9876543210" },
+          "otp": { "type": "string", "example": "123456" },
+          "device": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "UpdateCustomerProfile": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string" } }
+      },
+      "AddAddress": {
+        "type": "object",
+        "required": ["receiver_name", "receiver_phone", "line1", "city", "state"],
+        "properties": {
+          "receiver_name": { "type": "string" },
+          "receiver_phone": { "type": "string" },
+          "line1": { "type": "string" },
+          "line2": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "pincode": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" }
+        }
+      },
+      "Coordinates": {
+        "type": "object",
+        "required": ["latitude", "longitude"],
+        "properties": {
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" }
+        }
+      },
+      "AddCartItem": {
+        "type": "object",
+        "required": ["product_id", "quantity"],
+        "properties": {
+          "product_id": { "type": "string" },
+          "quantity": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "UpdateCartItem": {
+        "type": "object",
+        "required": ["quantity"],
+        "properties": { "quantity": { "type": "integer", "minimum": 0 } }
+      },
+      "CreateOrder": {
+        "type": "object",
+        "required": ["address_id", "payment_method"],
+        "properties": {
+          "address_id": { "type": "string" },
+          "payment_method": { "type": "string", "enum": ["COD", "UPI_ON_DELIVERY"] },
+          "customer_note": { "type": "string" }
+        }
+      },
+      "ReasonOptional": {
+        "type": "object",
+        "properties": { "reason": { "type": "string" } }
+      },
+      "ReasonRequired": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": { "reason": { "type": "string" } }
+      },
+      "ShopStatus": {
+        "type": "object",
+        "required": ["is_open"],
+        "properties": { "is_open": { "type": "boolean" } }
+      },
+      "ProductAvailability": {
+        "type": "object",
+        "required": ["is_available"],
+        "properties": { "is_available": { "type": "boolean" } }
+      },
+      "ProductPrice": {
+        "type": "object",
+        "required": ["price"],
+        "properties": { "price": { "type": "number" } }
+      },
+      "RiderOnlineStatus": {
+        "type": "object",
+        "required": ["is_online"],
+        "properties": { "is_online": { "type": "boolean" } }
+      },
+      "PaymentCollected": {
+        "type": "object",
+        "required": ["amount"],
+        "properties": {
+          "amount": { "type": "number" },
+          "payment_method_actual": { "type": "string", "enum": ["COD", "UPI_ON_DELIVERY"] },
+          "collector_type": { "type": "string", "enum": ["RIDER", "VENDOR", "ADMIN", "QUICKGO_ADMIN"] },
+          "collector_id": { "type": "string" },
+          "payment_proof_reference": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      },
+      "CreateSupportTicket": {
+        "type": "object",
+        "required": ["subject", "description"],
+        "properties": {
+          "order_id": { "type": "string" },
+          "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+          "subject": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "CreatePrivacyRequest": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "PrivacyRequestUpdate": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string", "enum": ["OPEN", "IN_PROGRESS", "COMPLETED", "REJECTED"] },
+          "admin_note": { "type": "string" }
+        }
+      },
+      "AssignRider": {
+        "type": "object",
+        "required": ["rider_id", "reason"],
+        "properties": {
+          "rider_id": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "ReconcilePayment": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string" },
+          "status": { "type": "string", "enum": ["VERIFIED", "SHORT_COLLECTED", "OVER_COLLECTED", "DISPUTED", "SETTLED"] },
+          "amount_collected": { "type": "number" }
+        }
+      },
+      "CreateVendor": {
+        "type": "object",
+        "required": ["shop_name", "owner_name", "owner_phone", "category_code", "service_zone_id", "address_line", "city", "state", "commission_rate"],
+        "properties": {
+          "shop_name": { "type": "string" },
+          "owner_name": { "type": "string" },
+          "owner_phone": { "type": "string" },
+          "category_code": { "type": "string", "enum": ["RESTAURANT_FOOD", "VEGETABLES", "FRUITS", "DAIRY"] },
+          "service_zone_id": { "type": "string" },
+          "address_line": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" },
+          "commission_rate": { "type": "number" }
+        }
+      },
+      "CreateRider": {
+        "type": "object",
+        "required": ["name", "phone", "service_zone_id"],
+        "properties": {
+          "name": { "type": "string" },
+          "phone": { "type": "string" },
+          "service_zone_id": { "type": "string" }
+        }
+      },
+      "CreateProduct": {
+        "type": "object",
+        "required": ["vendor_id", "category_id", "name", "unit", "price"],
+        "properties": {
+          "vendor_id": { "type": "string" },
+          "category_id": { "type": "string" },
+          "name": { "type": "string" },
+          "unit": { "type": "string" },
+          "price": { "type": "number" },
+          "description": { "type": "string" },
+          "image_url": { "type": "string" }
+        }
+      },
+      "StatusWithReason": {
+        "type": "object",
+        "required": ["status", "reason"],
+        "properties": {
+          "status": { "type": "string" },
+          "reason": { "type": "string" },
+          "fssai_status": { "type": "string" },
+          "is_available": { "type": "boolean" }
+        }
+      },
+      "CategoryStatus": {
+        "type": "object",
+        "required": ["is_active", "reason"],
+        "properties": {
+          "is_active": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      },
+      "CreateDocument": {
+        "type": "object",
+        "required": ["type", "document_url"],
+        "properties": {
+          "type": { "type": "string" },
+          "document_url": { "type": "string" },
+          "expires_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ReviewDocument": {
+        "type": "object",
+        "required": ["status", "reason"],
+        "properties": {
+          "status": { "type": "string", "enum": ["APPROVED", "REJECTED", "EXPIRED"] },
+          "reason": { "type": "string" },
+          "fssai_status": { "type": "string" }
+        }
+      },
+      "ServiceZone": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "name": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "center_latitude": { "type": "number" },
+          "center_longitude": { "type": "number" },
+          "radius_km": { "type": "number" },
+          "is_active": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      },
+      "SupportTicketUpdate": {
+        "type": "object",
+        "required": ["status", "reason"],
+        "properties": {
+          "status": { "type": "string" },
+          "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+          "admin_note": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

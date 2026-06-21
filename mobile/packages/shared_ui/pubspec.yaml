@@ -1,0 +1,9 @@
+name: quickgo_shared_ui
+description: Shared QuickGO Flutter UI widgets.
+version: 0.1.0
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+

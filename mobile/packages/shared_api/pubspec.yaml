@@ -1,0 +1,10 @@
+name: quickgo_shared_api
+description: Shared QuickGO API client.
+version: 0.1.0
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+dependencies:
+  dio: ^5.7.0
+  quickgo_shared_models:
+    path: ../shared_models
+

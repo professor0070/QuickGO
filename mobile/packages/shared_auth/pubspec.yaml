@@ -1,0 +1,9 @@
+name: quickgo_shared_auth
+description: Shared QuickGO OTP auth helpers.
+version: 0.1.0
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+dependencies:
+  quickgo_shared_api:
+    path: ../shared_api
+

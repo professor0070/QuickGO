@@ -1,0 +1,59 @@
+import { BadRequestException } from "@nestjs/common";
+import { API_ERROR_CODES } from "../../common/constants";
+
+export const ORDER_STATUSES = [
+  "PLACED",
+  "VENDOR_ACCEPTED",
+  "PREPARING_OR_PACKING",
+  "READY_FOR_PICKUP",
+  "RIDER_ASSIGNED",
+  "PICKED_UP",
+  "DELIVERED",
+  "PAYMENT_COLLECTED",
+  "COMPLETED",
+  "CUSTOMER_CANCELLED",
+  "VENDOR_REJECTED",
+  "ADMIN_CANCELLED",
+  "RIDER_FAILED",
+  "PAYMENT_PENDING",
+  "REFUND_PENDING",
+  "REFUNDED",
+  "SUPPORT_REVIEW",
+  "CANCELLED"
+] as const;
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
+  PLACED: ["VENDOR_ACCEPTED", "VENDOR_REJECTED", "CUSTOMER_CANCELLED", "ADMIN_CANCELLED"],
+  VENDOR_ACCEPTED: ["PREPARING_OR_PACKING", "RIDER_ASSIGNED", "ADMIN_CANCELLED", "SUPPORT_REVIEW"],
+  PREPARING_OR_PACKING: ["READY_FOR_PICKUP", "ADMIN_CANCELLED", "SUPPORT_REVIEW"],
+  READY_FOR_PICKUP: ["RIDER_ASSIGNED", "PICKED_UP", "ADMIN_CANCELLED", "SUPPORT_REVIEW"],
+  RIDER_ASSIGNED: ["PICKED_UP", "RIDER_FAILED", "ADMIN_CANCELLED"],
+  PICKED_UP: ["DELIVERED", "RIDER_FAILED", "SUPPORT_REVIEW"],
+  DELIVERED: ["PAYMENT_COLLECTED", "PAYMENT_PENDING", "COMPLETED"],
+  PAYMENT_COLLECTED: ["COMPLETED", "SUPPORT_REVIEW"],
+  COMPLETED: [],
+  CUSTOMER_CANCELLED: ["REFUND_PENDING"],
+  VENDOR_REJECTED: [],
+  ADMIN_CANCELLED: ["REFUND_PENDING"],
+  RIDER_FAILED: ["RIDER_ASSIGNED", "ADMIN_CANCELLED", "SUPPORT_REVIEW"],
+  PAYMENT_PENDING: ["PAYMENT_COLLECTED", "SUPPORT_REVIEW"],
+  REFUND_PENDING: ["REFUNDED"],
+  REFUNDED: [],
+  SUPPORT_REVIEW: ["COMPLETED", "ADMIN_CANCELLED", "REFUND_PENDING"],
+  CANCELLED: []
+};
+
+export function assertOrderTransition(from: OrderStatus, to: OrderStatus) {
+  if (!allowedTransitions[from].includes(to)) {
+    throw new BadRequestException({
+      code: API_ERROR_CODES.ORDER_STATE_INVALID,
+      message: `Order cannot move from ${from} to ${to}`
+    });
+  }
+}
+
+export function canCustomerCancel(status: OrderStatus) {
+  return status === "PLACED";
+}

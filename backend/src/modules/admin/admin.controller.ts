@@ -23,7 +23,8 @@ import {
   UpdateSupportTicketDto,
   UpdateVendorStatusDto,
   CreateCategoryDto,
-  UpdateCategoryDto
+  UpdateCategoryDto,
+  ApprovePayoutDto
 } from "./admin.dto";
 import { AdminService } from "./admin.service";
 
@@ -291,6 +292,22 @@ export class AdminController {
   @Get("audit-logs")
   auditLogs() {
     return this.admin.auditLogs();
+  }
+
+  @Get("payouts")
+  payouts() {
+    return this.admin.payouts();
+  }
+
+  @Idempotent("APPROVE_PAYOUT")
+  @Post("payouts/:payoutId/approve")
+  async approvePayout(
+    @CurrentUser() user: RequestUser,
+    @Param("payoutId") payoutId: string,
+    @Body() body: ApprovePayoutDto
+  ) {
+    const payout = await this.admin.approvePayout(payoutId, body, user.id);
+    return { data: payout, message: "Payout updated" };
   }
 
   @Get("categories")

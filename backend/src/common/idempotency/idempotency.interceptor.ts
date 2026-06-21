@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { Request } from "express";
-import { Observable, of, tap } from "rxjs";
+import { catchError, from, mergeMap, Observable, of, throwError } from "rxjs";
 import { API_ERROR_CODES } from "../constants";
 import { IDEMPOTENT_ACTION_KEY, IdempotentAction } from "./idempotent.decorator";
 import { IdempotencyService } from "./idempotency.service";
@@ -41,16 +41,24 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     const scopedKey = `${action}:${idempotencyKey}`;
-    const cached = this.idempotency.begin(scopedKey);
-    if (cached !== undefined) {
-      return of(cached);
-    }
+    return from(this.idempotency.begin(scopedKey)).pipe(
+      mergeMap((cached) => {
+        if (cached !== undefined) {
+          return of(cached);
+        }
 
-    return next.handle().pipe(
-      tap((body) => {
-        this.idempotency.complete(scopedKey, body);
+        return next.handle().pipe(
+          mergeMap(async (body) => {
+            await this.idempotency.complete(scopedKey, body);
+            return body;
+          }),
+          catchError((error: unknown) =>
+            from(this.idempotency.fail(scopedKey)).pipe(
+              mergeMap(() => throwError(() => error))
+            )
+          )
+        );
       })
     );
   }
 }
-

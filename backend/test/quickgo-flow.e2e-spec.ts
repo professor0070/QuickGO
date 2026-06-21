@@ -1,5 +1,6 @@
 import "reflect-metadata";
-import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { ValidationPipe } from "@nestjs/common";
+import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { AllExceptionsFilter } from "../src/common/http/all-exceptions.filter";
@@ -11,7 +12,7 @@ const request = require("supertest") as any;
 const serviceZoneId = "00000000-0000-4000-8000-000000000001";
 
 describe("QuickGO MVP backend flow (e2e)", () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let prisma: InMemoryPrismaService;
   let keyCounter = 1;
 
@@ -27,12 +28,13 @@ describe("QuickGO MVP backend flow (e2e)", () => {
       .useValue(prisma)
       .compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.setGlobalPrefix("api/v1");
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalFilters(new AllExceptionsFilter());
     app.useGlobalInterceptors(new ApiResponseInterceptor());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
   });
 
   beforeEach(() => {

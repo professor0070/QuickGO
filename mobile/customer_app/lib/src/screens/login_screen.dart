@@ -24,13 +24,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final repo = ref.read(authRepositoryProvider);
       await repo.sendOtp(_phone.text);
+      if (!mounted) return;
       setState(() => _otpSent = true);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send OTP: $e')),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -42,19 +44,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final response = await repo.verifyOtp(_phone.text, _otp.text);
       final token = response['access_token'] as String;
       final user = response['user'] as Map<String, dynamic>;
-      
+
       ref.read(sessionProvider.notifier).authenticate(
             token,
             user['phone'] as String,
             user['id'] as String,
           );
+      if (!mounted) return;
       widget.onVerified();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to verify OTP: $e')),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 

@@ -181,6 +181,14 @@ export class UpdateProductStatusDto extends AdminReasonDto {
   @IsOptional()
   @IsBoolean()
   is_available?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  price?: number;
+
+  @IsOptional()
+  @IsNumber()
+  mrp?: number;
 }
 
 export class UpdateCategoryStatusDto extends AdminReasonDto {
@@ -216,6 +224,15 @@ export class UpdateSupportTicketDto extends AdminReasonDto {
   @IsOptional()
   @IsString()
   admin_note?: string;
+}
+
+export class ApprovePayoutDto extends AdminReasonDto {
+  @IsIn(["PAYOUT_PENDING", "PAYOUT_PAID", "PAYOUT_HOLD", "PAYOUT_DISPUTED"])
+  status!: "PAYOUT_PENDING" | "PAYOUT_PAID" | "PAYOUT_HOLD" | "PAYOUT_DISPUTED";
+
+  @IsOptional()
+  @IsString()
+  adjustment_note?: string;
 }
 
 export class CreateVendorComplianceDocumentDto {
@@ -264,8 +281,8 @@ export class ReviewRiderKycDocumentDto extends AdminReasonDto {
 }
 
 export class CreateCategoryDto {
-  @IsIn(["RESTAURANT_FOOD", "VEGETABLES", "FRUITS", "DAIRY", "MEAT", "FISH"])
-  code!: "RESTAURANT_FOOD" | "VEGETABLES" | "FRUITS" | "DAIRY" | "MEAT" | "FISH";
+  @IsIn(["RESTAURANT_FOOD", "VEGETABLES", "FRUITS", "DAIRY"])
+  code!: "RESTAURANT_FOOD" | "VEGETABLES" | "FRUITS" | "DAIRY";
 
   @IsString()
   name!: string;

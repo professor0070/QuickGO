@@ -28,8 +28,8 @@ export class CatalogService {
   }
 
   vendorDetail(vendorId: string) {
-    return this.prisma.vendor.findUnique({
-      where: { id: vendorId },
+    return this.prisma.vendor.findFirst({
+      where: { id: vendorId, isOpen: true, status: "APPROVED" },
       include: {
         products: {
           where: { isApproved: true, isAvailable: true, category: { isActive: true } },
@@ -53,6 +53,7 @@ export class CatalogService {
         isApproved: true,
         isAvailable: true,
         category: { isActive: true },
+        vendor: { isOpen: true, status: "APPROVED" },
         ...(filters.vendorId ? { vendorId: filters.vendorId } : {}),
         ...(filters.categoryId ? { categoryId: filters.categoryId } : {})
       },

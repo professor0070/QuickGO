@@ -3,8 +3,7 @@ import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import 'package:quickgo_shared_auth/quickgo_auth.dart';
 
 final apiClientProvider = Provider<QuickGoApiClient>((ref) {
-  // Pointing to NestJS backend local URL
-  return QuickGoApiClient(baseUrl: 'http://localhost:3000/api/v1');
+  return QuickGoApiClient();
 });
 
 final authRepositoryProvider = Provider<QuickGoAuthRepository>((ref) {
@@ -92,6 +91,28 @@ final addressesProvider = FutureProvider<List<dynamic>>((ref) async {
 
 // Selected address for checkout
 final selectedAddressProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
+
+final serviceabilityProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final address = ref.watch(selectedAddressProvider);
+  if (address == null) {
+    return const {'serviceable': true};
+  }
+
+  final latitude = num.tryParse(address['latitude']?.toString() ?? '');
+  final longitude = num.tryParse(address['longitude']?.toString() ?? '');
+  if (latitude == null || longitude == null) {
+    return const {
+      'serviceable': false,
+      'reason': 'SERVICE_ZONE_UNAVAILABLE',
+    };
+  }
+
+  final client = ref.watch(apiClientProvider);
+  return client.postMap('/customer/serviceability', {
+    'latitude': latitude,
+    'longitude': longitude,
+  });
+});
 
 // Search Query Provider
 final searchQueryProvider = StateProvider<String>((ref) => '');

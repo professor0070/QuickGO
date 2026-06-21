@@ -1,5 +1,6 @@
 import "reflect-metadata";
-import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { ValidationPipe } from "@nestjs/common";
+import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { AllExceptionsFilter } from "../src/common/http/all-exceptions.filter";
@@ -11,7 +12,7 @@ const request = require("supertest") as any;
 const serviceZoneId = "00000000-0000-4000-8000-000000000001";
 
 describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
-  let app: INestApplication;
+  let app: NestFastifyApplication;
   let prisma: InMemoryPrismaService;
 
   beforeAll(async () => {
@@ -26,12 +27,13 @@ describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
       .useValue(prisma)
       .compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.setGlobalPrefix("api/v1");
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalFilters(new AllExceptionsFilter());
     app.useGlobalInterceptors(new ApiResponseInterceptor());
     await app.init();
+    await app.getHttpAdapter().getInstance().ready();
   });
 
   beforeEach(() => {
@@ -58,8 +60,8 @@ describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
   it("handles category administration successfully", async () => {
     const adminToken = await login("9999999999");
 
-    // 1. Create a category (MEAT)
-    const createRes = await request(app.getHttpServer())
+    // 1. Block categories outside the locked MVP food scope.
+    await request(app.getHttpServer())
       .post("/api/v1/admin/categories")
       .set("Authorization", bearer(adminToken))
       .send({
@@ -68,31 +70,48 @@ describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
         sort_order: 5,
         is_fresh: true
       })
-      .expect(201);
+      .expect(400);
 
-    expect(createRes.body.data.code).toBe("MEAT");
-    expect(createRes.body.data.isFresh).toBe(true);
-
-    // 2. Update category
-    const updateRes = await request(app.getHttpServer())
-      .patch(`/api/v1/admin/categories/${createRes.body.data.id}`)
+    // 2. Reject duplicate seeded categories.
+    await request(app.getHttpServer())
+      .post("/api/v1/admin/categories")
       .set("Authorization", bearer(adminToken))
       .send({
-        name: "Organic Meat",
+        code: "DAIRY",
+        name: "Fresh Dairy",
+        sort_order: 5,
+        is_fresh: true
+      })
+      .expect(400);
+
+    const listBeforeUpdate = await request(app.getHttpServer())
+      .get("/api/v1/admin/categories")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    const dairyCategory = listBeforeUpdate.body.data.find((c: any) => c.code === "DAIRY");
+    expect(dairyCategory).toBeTruthy();
+
+    // 3. Update a seeded allowed category
+    const updateRes = await request(app.getHttpServer())
+      .patch(`/api/v1/admin/categories/${dairyCategory.id}`)
+      .set("Authorization", bearer(adminToken))
+      .send({
+        name: "Organic Dairy",
         sort_order: 6
       })
       .expect(200);
 
-    expect(updateRes.body.data.name).toBe("Organic Meat");
+    expect(updateRes.body.data.name).toBe("Organic Dairy");
     expect(updateRes.body.data.sortOrder).toBe(6);
 
-    // 3. List all categories
+    // 4. List all categories
     const listRes = await request(app.getHttpServer())
       .get("/api/v1/admin/categories")
       .set("Authorization", bearer(adminToken))
       .expect(200);
 
-    expect(listRes.body.data.some((c: any) => c.code === "MEAT")).toBe(true);
+    expect(listRes.body.data.some((c: any) => c.code === "DAIRY")).toBe(true);
+    expect(listRes.body.data.some((c: any) => c.code === "MEAT")).toBe(false);
   });
 
   it("handles vendor profile management, document uploads, and product validations", async () => {

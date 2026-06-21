@@ -885,6 +885,34 @@
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/admin/payouts": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List vendor and rider payout records",
+        "operationId": "adminPayouts",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/payouts/{payoutId}/approve": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Manually update payout status with reason",
+        "operationId": "adminPayoutApprove",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "payoutId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/PayoutUpdate" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/admin/reports/validation-dashboard": {
       "get": {
         "tags": ["Reports"],
@@ -1133,6 +1161,10 @@
       "SupportTicketUpdate": {
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SupportTicketUpdate" } } }
+      },
+      "PayoutUpdate": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayoutUpdate" } } }
       }
     },
     "schemas": {
@@ -1409,6 +1441,18 @@
           "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
           "admin_note": { "type": "string" },
           "reason": { "type": "string" }
+        }
+      },
+      "PayoutUpdate": {
+        "type": "object",
+        "required": ["status", "reason"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["PAYOUT_PENDING", "PAYOUT_PAID", "PAYOUT_HOLD", "PAYOUT_DISPUTED"]
+          },
+          "reason": { "type": "string" },
+          "adjustment_note": { "type": "string" }
         }
       }
     }

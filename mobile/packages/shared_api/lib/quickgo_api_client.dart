@@ -2,17 +2,21 @@ import 'package:dio/dio.dart';
 
 class QuickGoApiClient {
   QuickGoApiClient({
-    String baseUrl = 'http://localhost:3000/api/v1',
+    String baseUrl = const String.fromEnvironment(
+      'QUICKGO_API_BASE_URL',
+      defaultValue: 'http://10.0.2.2:3000/api/v1',
+    ),
     Dio? dio,
-  }) : _dio = dio ??
-            Dio(
-              BaseOptions(
-                baseUrl: baseUrl,
-                connectTimeout: const Duration(seconds: 12),
-                receiveTimeout: const Duration(seconds: 12),
-                headers: {'Content-Type': 'application/json'},
-              ),
-            );
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               baseUrl: baseUrl,
+               connectTimeout: const Duration(seconds: 12),
+               receiveTimeout: const Duration(seconds: 12),
+               headers: {'Content-Type': 'application/json'},
+             ),
+           );
 
   final Dio _dio;
 
@@ -59,5 +63,8 @@ class QuickGoApiClient {
     final response = await _dio.delete<Map<String, dynamic>>(path);
     return response.data?['data'] as Map<String, dynamic>? ?? {};
   }
-}
 
+  Future<Map<String, dynamic>> clear(String path) {
+    return delete(path);
+  }
+}

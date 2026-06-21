@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import '../widgets/product_card.dart';
-import 'product_detail_screen.dart';
 
 class CategoryProductsScreen extends ConsumerWidget {
   const CategoryProductsScreen({
@@ -23,7 +22,8 @@ class CategoryProductsScreen extends ConsumerWidget {
       body: productsAsync.when(
         data: (products) {
           if (products.isEmpty) {
-            return const Center(child: Text('No products available under this category.'));
+            return const Center(
+                child: Text('No products available under this category.'));
           }
 
           return GridView.builder(
@@ -47,10 +47,13 @@ class CategoryProductsScreen extends ConsumerWidget {
                       'quantity': 1,
                     });
                     ref.invalidate(cartProvider);
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${product['name']} added to cart')),
+                      SnackBar(
+                          content: Text('${product['name']} added to cart')),
                     );
                   } catch (e) {
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Failed to add to cart: $e')),
                     );

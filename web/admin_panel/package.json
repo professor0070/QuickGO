@@ -6,7 +6,7 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "next lint",
+    "lint": "eslint \"app/**/*.{ts,tsx}\" \"lib/**/*.ts\" \"tests/**/*.mjs\"",
     "test": "node ./tests/admin-routes.test.mjs"
   },
   "dependencies": {

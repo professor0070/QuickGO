@@ -24,23 +24,27 @@ class OrderConfirmationScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_outline, size: 100, color: Colors.green),
+            const Icon(Icons.check_circle_outline,
+                size: 100, color: Colors.green),
             const SizedBox(height: 24),
             const Text(
               'Thank You for Your Order!',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              textAlign: Center,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               'Your order has been successfully placed. Your order number is:',
               style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-              textAlign: Center,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             SelectableText(
               orderNumber,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo),
+              style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.indigo),
             ),
             const SizedBox(height: 24),
             Card(
@@ -52,7 +56,9 @@ class OrderConfirmationScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Amount to Pay:'),
-                        Text('₹${totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text('₹${totalAmount.toStringAsFixed(2)}',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -60,7 +66,8 @@ class OrderConfirmationScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Payment Mode:'),
-                        Text('COD / UPI on Delivery', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('COD / UPI on Delivery',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ],

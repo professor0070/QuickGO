@@ -29,6 +29,14 @@ Upload-related backend code already exists under `backend/src/modules/uploads/` 
 
 Phase 7 may proceed only after this caveat remains documented and accepted. Phase 7 must not assume the repository is a clean Phase 6-only snapshot.
 
+## Phase 6 Security Recovery Lock
+
+Phase 6 security recovery was completed on 2026-06-22. Production high/critical dependency blockers are resolved: `npm audit --omit=dev --json` reports `critical: 0` and `high: 0`.
+
+The backend was moved off the vulnerable Express/Multer production dependency path and onto the patched Nest 11 Fastify runtime. Existing upload code was preserved and adapted to Fastify multipart handling; this does not change the documented caveat that uploads are post-Phase-6/later-phase contamination already present in the mixed-state repository.
+
+The fresh lock audit report is recorded in `docs/PHASE_6_LOCK_AUDIT_REPORT.md`. Phase 7 may be planned after this baseline, but Phase 7 code changes must wait for explicit confirmation.
+
 ## Remaining Product Work
 
 - Replace event-handler log boundaries with production notification/SLA/reconciliation persistence where needed.

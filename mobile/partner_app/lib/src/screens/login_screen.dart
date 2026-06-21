@@ -24,13 +24,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final repo = ref.read(authRepositoryProvider);
       await repo.sendOtp(_phone.text);
+      if (!mounted) return;
       setState(() => _otpSent = true);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send OTP: $e')),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -45,10 +47,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final rawRoles = user['roles'] as List<dynamic>? ?? const [];
       final roles = rawRoles.map((r) => r.toString()).toList();
 
-      final isVendor = roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
-      if (!isVendor) {
+      final isVendor =
+          roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
+      final isRider = roles.contains('RIDER');
+      if (!isVendor && !isRider) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unauthorized: Account is not registered as a vendor.')),
+          const SnackBar(
+              content: Text(
+                  'Unauthorized: Account is not registered as a partner.')),
         );
         return;
       }
@@ -59,13 +66,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             user['id'] as String,
             roles,
           );
+      if (!mounted) return;
       widget.onVerified();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to verify OTP: $e')),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -96,7 +105,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _acceptedTerms,
-            onChanged: (value) => setState(() => _acceptedTerms = value ?? false),
+            onChanged: (value) =>
+                setState(() => _acceptedTerms = value ?? false),
             title: const Text('I accept the Terms and Privacy Policy'),
           ),
           const SizedBox(height: 16),

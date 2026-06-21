@@ -12,7 +12,7 @@ ThemeData quickGoTheme() {
       backgroundColor: quickGoGreen,
       foregroundColor: Colors.white,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: Colors.white,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -51,4 +51,3 @@ class QuickGoSection extends StatelessWidget {
     );
   }
 }
-

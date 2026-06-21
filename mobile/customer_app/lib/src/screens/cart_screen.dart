@@ -6,7 +6,8 @@ import 'checkout_screen.dart';
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
 
-  Future<void> _updateQuantity(BuildContext context, WidgetRef ref, String itemId, int quantity) async {
+  Future<void> _updateQuantity(
+      BuildContext context, WidgetRef ref, String itemId, int quantity) async {
     try {
       final client = ref.read(apiClientProvider);
       await client.patchMap('/cart/items/$itemId', {
@@ -14,6 +15,7 @@ class CartScreen extends ConsumerWidget {
       });
       ref.invalidate(cartProvider);
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update cart: $e')),
       );
@@ -25,6 +27,7 @@ class CartScreen extends ConsumerWidget {
       final client = ref.read(apiClientProvider);
       await client.clear('/cart'); // Clear helper clears active items
       ref.invalidate(cartProvider);
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cart cleared')),
       );
@@ -35,8 +38,9 @@ class CartScreen extends ConsumerWidget {
         await client.postMap('/cart', {}); // fallback to clear via active route
         ref.invalidate(cartProvider);
       } catch (err) {
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to clear cart: $e')),
+          SnackBar(content: Text('Failed to clear cart: $err')),
         );
       }
     }
@@ -80,7 +84,8 @@ class CartScreen extends ConsumerWidget {
                     final product = item['product'] as Map<String, dynamic>?;
                     final name = product?['name'] as String? ?? 'Product';
                     final qty = int.tryParse(item['quantity'].toString()) ?? 0;
-                    final price = double.tryParse(item['unitPrice'].toString()) ?? 0.0;
+                    final price =
+                        double.tryParse(item['unitPrice'].toString()) ?? 0.0;
 
                     return ListTile(
                       title: Text(name),
@@ -90,12 +95,16 @@ class CartScreen extends ConsumerWidget {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () => _updateQuantity(context, ref, item['id'], qty - 1),
+                            onPressed: () => _updateQuantity(
+                                context, ref, item['id'], qty - 1),
                           ),
-                          Text('$qty', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Text('$qty',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => _updateQuantity(context, ref, item['id'], qty + 1),
+                            onPressed: () => _updateQuantity(
+                                context, ref, item['id'], qty + 1),
                           ),
                         ],
                       ),
@@ -112,8 +121,12 @@ class CartScreen extends ConsumerWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Subtotal:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          Text('₹${subtotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          const Text('Subtotal:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text('₹${subtotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16)),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -123,7 +136,8 @@ class CartScreen extends ConsumerWidget {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const CheckoutScreen()),
+                              MaterialPageRoute(
+                                  builder: (context) => const CheckoutScreen()),
                             );
                           },
                           child: const Text('Proceed to Checkout'),

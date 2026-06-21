@@ -41,6 +41,8 @@ export default function AdminDashboard() {
   const [supportTickets, setSupportTickets] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [serviceZones, setServiceZones] = useState<any[]>([]);
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [report, setReport] = useState<any>(null);
 
   // Action / Form states
   const [showVendorModal, setShowVendorModal] = useState(false);
@@ -92,16 +94,14 @@ export default function AdminDashboard() {
     description: "",
     unit: "kg",
     productType: "FRESH",
-    pricePaise: 4000
+    price: 40
   });
 
   const [assignRiderId, setAssignRiderId] = useState("");
   const [reconcileData, setReconcileData] = useState({
-    status: "RECONCILED",
-    amountCollectedPaise: 0,
-    collectorType: "RIDER",
-    collectorId: "",
-    note: "Cash received from rider"
+    status: "VERIFIED",
+    amount_collected: 0,
+    reason: ""
   });
 
   // Local storage for config & check token
@@ -116,8 +116,9 @@ export default function AdminDashboard() {
       })
         .then(res => res.json())
         .then(data => {
-          if (data && data.roles && (data.roles.includes("ADMIN") || data.roles.includes("SUPER_ADMIN"))) {
-            setUserProfile(data);
+          const profile = data?.data ?? data;
+          if (profile && profile.roles && (profile.roles.includes("ADMIN") || profile.roles.includes("SUPER_ADMIN"))) {
+            setUserProfile(profile);
           } else {
             localStorage.removeItem("quickgo_auth_token");
             setAuthToken("");
@@ -138,7 +139,7 @@ export default function AdminDashboard() {
       const res = await fetch(`${apiUrl}/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: loginPhone })
+        body: JSON.stringify({ phone: loginPhone, purpose: "LOGIN" })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Failed to send OTP");
@@ -211,6 +212,18 @@ export default function AdminDashboard() {
     return json.data !== undefined ? json.data : json;
   };
 
+  const requireReason = (action: string) => {
+    const reason = window.prompt(`Reason required for ${action}`);
+    const trimmed = reason?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : null;
+  };
+
+  const idempotencyHeaders = (scope: string) => ({
+    "Idempotency-Key": `${scope}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  });
+
+  const money = (value: unknown) => Number(value ?? 0).toFixed(2);
+
   const loadData = async () => {
     if (!authToken) {
       setError("Please set a valid Admin JWT Auth Token in Settings.");
@@ -236,15 +249,31 @@ export default function AdminDashboard() {
       } else if (activeTab === "Products") {
         const p = await fetchWithAuth("/admin/products");
         setProducts(p || []);
+      } else if (activeTab === "Payments & Reconciliation") {
+        const o = await fetchWithAuth("/admin/orders");
+        setOrders(o || []);
+      } else if (activeTab === "Settlements/Payouts") {
+        const p = await fetchWithAuth("/admin/payouts");
+        setPayouts(p || []);
       } else if (activeTab === "Support Tickets") {
         const s = await fetchWithAuth("/admin/support-tickets");
         setSupportTickets(s || []);
+      } else if (activeTab === "Compliance") {
+        const [v, r] = await Promise.all([
+          fetchWithAuth("/admin/vendors"),
+          fetchWithAuth("/admin/riders")
+        ]);
+        setVendors(v || []);
+        setRiders(r || []);
       } else if (activeTab === "Audit Logs") {
         const a = await fetchWithAuth("/admin/audit-logs");
         setAuditLogs(a || []);
       } else if (activeTab === "Service Zones") {
         const sz = await fetchWithAuth("/admin/service-zones");
         setServiceZones(sz || []);
+      } else if (activeTab === "Reports") {
+        const r = await fetchWithAuth("/admin/reports/validation-dashboard");
+        setReport(r || null);
       }
     } catch (err: any) {
       setError(err.message || "Failed to fetch data from API");
@@ -263,7 +292,17 @@ export default function AdminDashboard() {
     try {
       await fetchWithAuth("/admin/vendors", {
         method: "POST",
-        body: JSON.stringify(newVendor)
+        body: JSON.stringify({
+          shop_name: newVendor.shopName,
+          owner_name: newVendor.ownerName,
+          owner_phone: newVendor.ownerPhone,
+          category_code: newVendor.categoryCode,
+          service_zone_id: newVendor.serviceZoneId,
+          address_line: newVendor.addressLine,
+          city: newVendor.city,
+          state: newVendor.state,
+          commission_rate: 0
+        })
       });
       setShowVendorModal(false);
       alert("Vendor created successfully");
@@ -278,7 +317,11 @@ export default function AdminDashboard() {
     try {
       await fetchWithAuth("/admin/riders", {
         method: "POST",
-        body: JSON.stringify(newRider)
+        body: JSON.stringify({
+          name: newRider.name,
+          phone: newRider.phone,
+          service_zone_id: newRider.serviceZoneId
+        })
       });
       setShowRiderModal(false);
       alert("Rider created successfully");
@@ -293,7 +336,14 @@ export default function AdminDashboard() {
     try {
       await fetchWithAuth("/admin/products", {
         method: "POST",
-        body: JSON.stringify(newProduct)
+        body: JSON.stringify({
+          vendor_id: newProduct.vendorId,
+          category_id: newProduct.categoryId,
+          name: newProduct.name,
+          unit: newProduct.unit,
+          price: newProduct.price,
+          description: newProduct.description
+        })
       });
       setShowProductModal(false);
       alert("Product created successfully");
@@ -306,10 +356,13 @@ export default function AdminDashboard() {
   const handleAssignRider = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showAssignModal) return;
+    const reason = requireReason("manual rider assignment");
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/orders/${showAssignModal}/assign-rider`, {
         method: "POST",
-        body: JSON.stringify({ rider_id: assignRiderId, reason: "Manual assignment" })
+        headers: idempotencyHeaders("assign-rider"),
+        body: JSON.stringify({ rider_id: assignRiderId, reason })
       });
       setShowAssignModal(null);
       alert("Rider assigned to order");
@@ -322,9 +375,14 @@ export default function AdminDashboard() {
   const handleReconcilePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showReconcileModal) return;
+    if (!reconcileData.reason.trim()) {
+      alert("Reconciliation reason is required.");
+      return;
+    }
     try {
       await fetchWithAuth(`/admin/payments/${showReconcileModal}/reconcile`, {
         method: "PATCH",
+        headers: idempotencyHeaders("reconcile-payment"),
         body: JSON.stringify(reconcileData)
       });
       setShowReconcileModal(null);
@@ -336,11 +394,13 @@ export default function AdminDashboard() {
   };
 
   const handleToggleVendorStatus = async (vendorId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === "ACTIVE" ? "PAUSED" : "ACTIVE";
+    const nextStatus = currentStatus === "APPROVED" ? "PAUSED" : "APPROVED";
+    const reason = requireReason(`${nextStatus.toLowerCase()} vendor`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/vendors/${vendorId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status: nextStatus })
+        body: JSON.stringify({ status: nextStatus, reason })
       });
       alert(`Vendor status updated to ${nextStatus}`);
       loadData();
@@ -360,10 +420,12 @@ export default function AdminDashboard() {
   };
 
   const handleReviewCompliance = async (docId: string, status: string, fssaiStatus?: string) => {
+    const reason = requireReason(`${status.toLowerCase()} vendor compliance document`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/vendor-compliance-documents/${docId}/review`, {
         method: "PATCH",
-        body: JSON.stringify({ status, fssai_status: fssaiStatus, reason: "Reviewed by Admin" })
+        body: JSON.stringify({ status, fssai_status: fssaiStatus, reason })
       });
       alert("Compliance document status updated");
       if (showComplianceModal) {
@@ -386,10 +448,12 @@ export default function AdminDashboard() {
   };
 
   const handleReviewRiderKyc = async (docId: string, status: string) => {
+    const reason = requireReason(`${status.toLowerCase()} rider KYC document`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/rider-kyc-documents/${docId}/review`, {
         method: "PATCH",
-        body: JSON.stringify({ status, reason: "Reviewed by Admin" })
+        body: JSON.stringify({ status, reason })
       });
       alert("KYC document status updated");
       if (showRiderKycModal) {
@@ -403,10 +467,12 @@ export default function AdminDashboard() {
 
   const handleToggleRiderStatus = async (riderId: string, currentStatus: string) => {
     const nextStatus = currentStatus === "APPROVED" ? "SUSPENDED" : "APPROVED";
+    const reason = requireReason(`${nextStatus.toLowerCase()} rider`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/riders/${riderId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status: nextStatus, reason: "Status toggled by Admin" })
+        body: JSON.stringify({ status: nextStatus, reason })
       });
       alert(`Rider status updated to ${nextStatus}`);
       loadData();
@@ -417,10 +483,21 @@ export default function AdminDashboard() {
 
   const handleCreateZone = async (e: React.FormEvent) => {
     e.preventDefault();
+    const reason = requireReason("create service zone");
+    if (!reason) return;
     try {
       await fetchWithAuth("/admin/service-zones", {
         method: "POST",
-        body: JSON.stringify(newZone)
+        body: JSON.stringify({
+          name: newZone.name,
+          city: newZone.city,
+          state: newZone.state,
+          center_latitude: newZone.centerLatitude,
+          center_longitude: newZone.centerLongitude,
+          radius_km: newZone.radiusKm,
+          is_active: newZone.isActive,
+          reason
+        })
       });
       setShowZoneModal(false);
       alert("Service zone created successfully");
@@ -431,10 +508,12 @@ export default function AdminDashboard() {
   };
 
   const handleToggleZoneStatus = async (zoneId: string, currentStatus: boolean) => {
+    const reason = requireReason(`${currentStatus ? "pause" : "activate"} service zone`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/service-zones/${zoneId}`, {
         method: "PATCH",
-        body: JSON.stringify({ is_active: !currentStatus })
+        body: JSON.stringify({ is_active: !currentStatus, reason })
       });
       alert(`Service zone status updated`);
       loadData();
@@ -444,10 +523,12 @@ export default function AdminDashboard() {
   };
 
   const handleToggleProductAvailability = async (productId: string, currentAvailable: boolean, currentStatus: string) => {
+    const reason = requireReason(`${currentAvailable ? "disable" : "enable"} product availability`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/products/${productId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ is_available: !currentAvailable, status: currentStatus, reason: "Availability toggled by Admin" })
+        body: JSON.stringify({ is_available: !currentAvailable, status: currentStatus, reason })
       });
       alert("Product availability updated");
       loadData();
@@ -458,10 +539,12 @@ export default function AdminDashboard() {
 
   const handleToggleProductApproval = async (productId: string, currentStatus: string) => {
     const nextStatus = currentStatus === "APPROVED" ? "PAUSED" : "APPROVED";
+    const reason = requireReason(`${nextStatus.toLowerCase()} product`);
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/products/${productId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status: nextStatus, reason: "Approval status updated by Admin" })
+        body: JSON.stringify({ status: nextStatus, reason })
       });
       alert(`Product status updated to ${nextStatus}`);
       loadData();
@@ -471,15 +554,17 @@ export default function AdminDashboard() {
   };
 
   const handleUpdateProductPrice = async (productId: string, priceRupees: string, currentStatus: string) => {
-    const price = Math.round(parseFloat(priceRupees) * 100);
+    const price = parseFloat(priceRupees);
     if (isNaN(price) || price <= 0) {
       alert("Please enter a valid price");
       return;
     }
+    const reason = requireReason("update product price");
+    if (!reason) return;
     try {
       await fetchWithAuth(`/admin/products/${productId}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ price, status: currentStatus, reason: "Price updated by Admin" })
+        body: JSON.stringify({ price, status: currentStatus, reason })
       });
       alert("Product price updated");
       loadData();
@@ -487,6 +572,53 @@ export default function AdminDashboard() {
       alert("Error: " + err.message);
     }
   };
+
+  const handleUpdateSupportTicket = async (ticketId: string, status: string) => {
+    const reason = requireReason(`${status.toLowerCase()} support ticket`);
+    if (!reason) return;
+    try {
+      await fetchWithAuth(`/admin/support-tickets/${ticketId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, reason })
+      });
+      alert("Support ticket updated");
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleUpdatePayout = async (payoutId: string, status: string) => {
+    const reason = requireReason(`${status.toLowerCase().split("_").join(" ")} payout`);
+    if (!reason) return;
+    try {
+      await fetchWithAuth(`/admin/payouts/${payoutId}/approve`, {
+        method: "POST",
+        headers: idempotencyHeaders("approve-payout"),
+        body: JSON.stringify({ status, reason })
+      });
+      alert("Payout updated");
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const paymentAttentionStatuses = new Set([
+    "PENDING",
+    "PENDING_COLLECTION",
+    "COLLECTION_PENDING",
+    "COLLECTED_UNVERIFIED",
+    "SHORT_COLLECTED",
+    "OVER_COLLECTED",
+    "DISPUTED"
+  ]);
+  const pendingPayments = orders.flatMap((order) =>
+    ((order.payments as any[] | undefined) ?? [])
+      .filter((payment) => paymentAttentionStatuses.has(payment.status))
+      .map((payment) => ({ order, payment }))
+  );
+  const pendingPayouts = payouts.filter((payout) => payout.status !== "PAYOUT_PAID");
 
   if (!authToken || !userProfile) {
     return (
@@ -705,11 +837,11 @@ export default function AdminDashboard() {
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Today's Vendor Commission</div>
-                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-650">Rs {((stats.today_vendor_commission ?? 0) / 100).toFixed(2)}</div>
+                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-650">Rs {money(stats.today_vendor_commission)}</div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Today's Delivery Fees</div>
-                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-650">Rs {((stats.today_delivery_fee_collected ?? 0) / 100).toFixed(2)}</div>
+                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-650">Rs {money(stats.today_delivery_fee_collected)}</div>
                     </div>
                   </div>
 
@@ -751,7 +883,7 @@ export default function AdminDashboard() {
                             <tr key={order.id} className="hover:bg-slate-50">
                               <td className="px-5 py-3 font-semibold">{order.orderNumber}</td>
                               <td className="px-5 py-3">{(order.vendorSnapshot as any)?.shopName || "Unknown"}</td>
-                              <td className="px-5 py-3">Rs {order.totalAmount}</td>
+                              <td className="px-5 py-3">Rs {money(order.totalAmount)}</td>
                               <td className="px-5 py-3">
                                 <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
                                   order.status === "DELIVERED" || order.status === "COMPLETED"
@@ -780,11 +912,13 @@ export default function AdminDashboard() {
                                 {order.status !== "COMPLETED" && order.status !== "CANCELLED" && (
                                   <button
                                     onClick={async () => {
-                                      if (confirm("Cancel this order?")) {
+                                      const reason = requireReason("admin order cancellation");
+                                      if (reason && confirm("Cancel this order?")) {
                                         try {
                                           await fetchWithAuth(`/admin/orders/${order.id}/cancel`, {
                                             method: "POST",
-                                            body: JSON.stringify({ reason: "Admin cancelled" })
+                                            headers: idempotencyHeaders("admin-cancel-order"),
+                                            body: JSON.stringify({ reason })
                                           });
                                           alert("Order cancelled");
                                           loadData();
@@ -858,7 +992,7 @@ export default function AdminDashboard() {
                                     onClick={() => handleToggleVendorStatus(vendor.id, vendor.status)}
                                     className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
                                   >
-                                    {vendor.status === "ACTIVE" ? "Pause" : "Activate"}
+                                    {vendor.status === "APPROVED" ? "Pause" : "Approve"}
                                   </button>
                                   <button
                                     onClick={() => loadVendorCompliance(vendor.id)}
@@ -987,7 +1121,7 @@ export default function AdminDashboard() {
                                     id={`price-${product.id}`}
                                     type="number"
                                     step="0.01"
-                                    defaultValue={((product.prices?.[0]?.price ?? 0) / 100).toFixed(2)}
+                                    defaultValue={money(product.prices?.[0]?.price)}
                                     className="w-16 rounded border px-1.5 py-0.5 text-xs text-slate-850"
                                   />
                                   <button
@@ -1042,8 +1176,110 @@ export default function AdminDashboard() {
                   <div className="border-b border-slate-200 px-5 py-4">
                     <h2 className="text-lg font-bold">Pending Collections</h2>
                   </div>
-                  <div className="p-5 text-center text-slate-500">
-                    No payment collection tasks pending review. All COD/UPI rider balances are reconciled.
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                        <tr>
+                          <th className="px-5 py-3">Order</th>
+                          <th className="px-5 py-3">Method</th>
+                          <th className="px-5 py-3">Expected</th>
+                          <th className="px-5 py-3">Collected</th>
+                          <th className="px-5 py-3">Collector</th>
+                          <th className="px-5 py-3">Status</th>
+                          <th className="px-5 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {pendingPayments.length === 0 ? (
+                          <tr>
+                            <td className="px-5 py-8 text-center text-slate-500" colSpan={7}>
+                              No payment collection tasks pending review.
+                            </td>
+                          </tr>
+                        ) : (
+                          pendingPayments.map(({ order, payment }) => (
+                            <tr key={payment.id} className="hover:bg-slate-50">
+                              <td className="px-5 py-3 font-semibold">{order.orderNumber}</td>
+                              <td className="px-5 py-3">{payment.paymentMethodActual || payment.paymentMethodRequested || payment.method}</td>
+                              <td className="px-5 py-3">Rs {money(payment.amount)}</td>
+                              <td className="px-5 py-3">Rs {money(payment.amountCollected)}</td>
+                              <td className="px-5 py-3">{payment.collectorType || "Pending"}</td>
+                              <td className="px-5 py-3">{payment.status}</td>
+                              <td className="px-5 py-3">
+                                <button
+                                  onClick={() => {
+                                    setShowReconcileModal(payment.id);
+                                    setReconcileData({
+                                      status: "VERIFIED",
+                                      amount_collected: Number(payment.amountCollected || payment.amount || 0),
+                                      reason: ""
+                                    });
+                                  }}
+                                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-xs font-semibold"
+                                >
+                                  Reconcile
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "Settlements/Payouts" && (
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-200 px-5 py-4">
+                    <h2 className="text-lg font-bold">Settlements & Payouts</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                        <tr>
+                          <th className="px-5 py-3">Payee</th>
+                          <th className="px-5 py-3">Type</th>
+                          <th className="px-5 py-3">Amount</th>
+                          <th className="px-5 py-3">Status</th>
+                          <th className="px-5 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {pendingPayouts.length === 0 ? (
+                          <tr>
+                            <td className="px-5 py-8 text-center text-slate-500" colSpan={5}>
+                              No pending payout records. Payouts are generated after payment reconciliation.
+                            </td>
+                          </tr>
+                        ) : (
+                          pendingPayouts.map((payout) => (
+                            <tr key={payout.id} className="hover:bg-slate-50">
+                              <td className="px-5 py-3 font-semibold">
+                                {payout.vendor?.shopName || payout.rider?.name || "Unknown"}
+                              </td>
+                              <td className="px-5 py-3">{payout.payeeType}</td>
+                              <td className="px-5 py-3">Rs {money(payout.amount)}</td>
+                              <td className="px-5 py-3">{payout.status}</td>
+                              <td className="px-5 py-3 flex gap-2">
+                                <button
+                                  onClick={() => handleUpdatePayout(payout.id, "PAYOUT_PAID")}
+                                  className="rounded bg-green-600 hover:bg-green-700 text-white px-2 py-1 text-xs font-semibold"
+                                >
+                                  Mark Paid
+                                </button>
+                                <button
+                                  onClick={() => handleUpdatePayout(payout.id, "PAYOUT_HOLD")}
+                                  className="rounded border border-amber-300 hover:bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700"
+                                >
+                                  Hold
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -1059,12 +1295,13 @@ export default function AdminDashboard() {
                           <th className="px-5 py-3">Status</th>
                           <th className="px-5 py-3">Description</th>
                           <th className="px-5 py-3">Created At</th>
+                          <th className="px-5 py-3">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {supportTickets.length === 0 ? (
                           <tr>
-                            <td className="px-5 py-8 text-center text-slate-500" colSpan={5}>
+                            <td className="px-5 py-8 text-center text-slate-500" colSpan={6}>
                               No support tickets found.
                             </td>
                           </tr>
@@ -1082,12 +1319,141 @@ export default function AdminDashboard() {
                               </td>
                               <td className="px-5 py-3 text-slate-600">{ticket.description}</td>
                               <td className="px-5 py-3">{new Date(ticket.createdAt).toLocaleString()}</td>
+                              <td className="px-5 py-3 flex gap-2">
+                                {ticket.status !== "RESOLVED" && (
+                                  <button
+                                    onClick={() => handleUpdateSupportTicket(ticket.id, "RESOLVED")}
+                                    className="rounded bg-green-600 hover:bg-green-700 text-white px-2 py-1 text-xs font-semibold"
+                                  >
+                                    Resolve
+                                  </button>
+                                )}
+                                {ticket.status === "OPEN" && (
+                                  <button
+                                    onClick={() => handleUpdateSupportTicket(ticket.id, "IN_PROGRESS")}
+                                    className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
+                                  >
+                                    Start
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           ))
                         )}
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {activeTab === "Compliance" && (
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <h2 className="text-lg font-bold">Vendor Compliance</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                          <tr>
+                            <th className="px-5 py-3">Vendor</th>
+                            <th className="px-5 py-3">FSSAI</th>
+                            <th className="px-5 py-3">Status</th>
+                            <th className="px-5 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {vendors.length === 0 ? (
+                            <tr>
+                              <td className="px-5 py-8 text-center text-slate-500" colSpan={4}>
+                                No vendors found.
+                              </td>
+                            </tr>
+                          ) : (
+                            vendors.map((vendor) => (
+                              <tr key={vendor.id} className="hover:bg-slate-50">
+                                <td className="px-5 py-3 font-semibold">{vendor.shopName}</td>
+                                <td className="px-5 py-3">{vendor.fssaiStatus}</td>
+                                <td className="px-5 py-3">{vendor.onboardingStatus || vendor.status}</td>
+                                <td className="px-5 py-3">
+                                  <button
+                                    onClick={() => loadVendorCompliance(vendor.id)}
+                                    className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
+                                  >
+                                    Review Docs
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <h2 className="text-lg font-bold">Rider KYC</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                          <tr>
+                            <th className="px-5 py-3">Rider</th>
+                            <th className="px-5 py-3">Phone</th>
+                            <th className="px-5 py-3">Status</th>
+                            <th className="px-5 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {riders.length === 0 ? (
+                            <tr>
+                              <td className="px-5 py-8 text-center text-slate-500" colSpan={4}>
+                                No riders found.
+                              </td>
+                            </tr>
+                          ) : (
+                            riders.map((rider) => (
+                              <tr key={rider.id} className="hover:bg-slate-50">
+                                <td className="px-5 py-3 font-semibold">{rider.name}</td>
+                                <td className="px-5 py-3">{rider.phone}</td>
+                                <td className="px-5 py-3">{rider.onboardingStatus || rider.status}</td>
+                                <td className="px-5 py-3">
+                                  <button
+                                    onClick={() => loadRiderKyc(rider.id)}
+                                    className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
+                                  >
+                                    Review KYC
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "Reports" && (
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-200 px-5 py-4">
+                    <h2 className="text-lg font-bold">Validation Dashboard</h2>
+                  </div>
+                  {!report ? (
+                    <div className="p-5 text-center text-slate-500">No validation report loaded.</div>
+                  ) : (
+                    <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+                      {Object.entries(report).map(([section, values]) => (
+                        <div key={section} className="rounded border border-slate-200 p-4">
+                          <h3 className="font-bold capitalize">{section.split("_").join(" ")}</h3>
+                          <pre className="mt-3 whitespace-pre-wrap text-xs text-slate-600">
+                            {JSON.stringify(values, null, 2)}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1349,6 +1715,78 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {showProductModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl p-6">
+            <h2 className="text-xl font-bold mb-4">Create Product</h2>
+            <form onSubmit={handleCreateProduct} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Vendor UUID"
+                value={newProduct.vendorId}
+                onChange={(e) => setNewProduct({ ...newProduct, vendorId: e.target.value })}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Category UUID"
+                value={newProduct.categoryId}
+                onChange={(e) => setNewProduct({ ...newProduct, categoryId: e.target.value })}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Product Name"
+                value={newProduct.name}
+                onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Unit, e.g. kg, plate, packet"
+                value={newProduct.unit}
+                onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+              />
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Price"
+                value={newProduct.price}
+                onChange={(e) => setNewProduct({ ...newProduct, price: Number(e.target.value) })}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+              />
+              <textarea
+                placeholder="Description"
+                value={newProduct.description}
+                onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm h-20"
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowProductModal(false)}
+                  className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded bg-indigo-650 hover:bg-indigo-750 text-white px-4 py-2 text-sm font-semibold"
+                >
+                  Submit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showZoneModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white rounded-xl max-w-md w-full shadow-2xl p-6">
@@ -1470,6 +1908,68 @@ export default function AdminDashboard() {
                   className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-semibold"
                 >
                   Confirm Assign
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showReconcileModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl p-6">
+            <h2 className="text-xl font-bold mb-4">Reconcile Payment</h2>
+            <form onSubmit={handleReconcilePayment} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Reconciliation Status</label>
+                <select
+                  value={reconcileData.status}
+                  onChange={(e) => setReconcileData({ ...reconcileData, status: e.target.value })}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm mt-1 bg-white text-slate-800"
+                  required
+                >
+                  <option value="VERIFIED">Verified</option>
+                  <option value="SHORT_COLLECTED">Short Collected</option>
+                  <option value="OVER_COLLECTED">Over Collected</option>
+                  <option value="DISPUTED">Disputed</option>
+                  <option value="SETTLED">Settled</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Amount Collected</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={reconcileData.amount_collected}
+                  onChange={(e) =>
+                    setReconcileData({ ...reconcileData, amount_collected: Number(e.target.value) })
+                  }
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm mt-1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Reason</label>
+                <textarea
+                  value={reconcileData.reason}
+                  onChange={(e) => setReconcileData({ ...reconcileData, reason: e.target.value })}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm mt-1 h-20"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowReconcileModal(null)}
+                  className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-semibold"
+                >
+                  Confirm Reconciliation
                 </button>
               </div>
             </form>

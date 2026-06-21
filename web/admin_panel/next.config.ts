@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const adminPanelDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  outputFileTracingRoot: path.join(process.cwd(), "../.."),
+  outputFileTracingRoot: path.resolve(adminPanelDir, "../.."),
   reactStrictMode: true
 };
 

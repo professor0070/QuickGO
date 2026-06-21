@@ -6,6 +6,7 @@ import {
   OnboardingStatus,
   PaymentMethod,
   PaymentStatus,
+  PayoutStatus,
   ProductCategoryCode,
   Prisma
 } from "@prisma/client";
@@ -29,7 +30,8 @@ import {
   UpdateSupportTicketDto,
   UpdateVendorStatusDto,
   CreateCategoryDto,
-  UpdateCategoryDto
+  UpdateCategoryDto,
+  ApprovePayoutDto
 } from "./admin.dto";
 
 const PAYMENT_ATTENTION_STATUSES: PaymentStatus[] = [
@@ -581,27 +583,57 @@ export class AdminService {
     dto: UpdateProductStatusDto,
     actorId?: string
   ) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: { prices: { where: { isActive: true }, orderBy: { effectiveOn: "desc" }, take: 1 } }
+    });
     if (!product) {
       throw new NotFoundException("Product not found");
+    }
+
+    const currentPrice = Number(product.prices[0]?.price ?? 0);
+    const currentMrp = Number(product.mrp);
+    const nextPrice = dto.price ?? currentPrice;
+    const nextMrp = dto.mrp ?? currentMrp;
+    if (nextPrice > nextMrp) {
+      throw new BadRequestException("Selling price must not exceed MRP");
     }
 
     const status = dto.status as OnboardingStatus;
     const isApproved = status === "APPROVED";
     const shouldForceUnavailable = ["REJECTED", "PAUSED", "BLOCKED"].includes(status);
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
-      data: {
-        approvalStatus: status,
-        isApproved,
-        isAvailable: shouldForceUnavailable ? false : dto.is_available ?? product.isAvailable,
-        approvedBy: isApproved ? actorId : product.approvedBy
-      },
-      include: {
-        vendor: { select: { id: true, shopName: true } },
-        category: true,
-        prices: { orderBy: { effectiveOn: "desc" }, take: 1 }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (dto.price !== undefined || dto.mrp !== undefined) {
+        await tx.productPrice.updateMany({
+          where: { productId, isActive: true },
+          data: { isActive: false }
+        });
+        await tx.productPrice.create({
+          data: {
+            productId,
+            price: nextPrice,
+            mrp: nextMrp,
+            isActive: true
+          }
+        });
       }
+
+      return tx.product.update({
+        where: { id: productId },
+        data: {
+          approvalStatus: status,
+          isApproved,
+          isAvailable: shouldForceUnavailable ? false : dto.is_available ?? product.isAvailable,
+          approvedBy: isApproved ? actorId : product.approvedBy,
+          mrp: nextMrp,
+          margin: nextMrp - nextPrice
+        },
+        include: {
+          vendor: { select: { id: true, shopName: true } },
+          category: true,
+          prices: { orderBy: { effectiveOn: "desc" }, take: 1 }
+        }
+      });
     });
 
     await this.auditAdminAction({
@@ -610,7 +642,12 @@ export class AdminService {
       entityType: "product",
       entityId: productId,
       reason: dto.reason,
-      metadata: { fromStatus: product.approvalStatus, toStatus: dto.status }
+      metadata: {
+        fromStatus: product.approvalStatus,
+        toStatus: dto.status,
+        fromPrice: currentPrice,
+        toPrice: nextPrice
+      }
     });
 
     return updated;
@@ -908,6 +945,51 @@ export class AdminService {
       orderBy: { createdAt: "desc" },
       take: 200
     });
+  }
+
+  payouts() {
+    return this.prisma.payout.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        vendor: { select: { id: true, shopName: true, ownerPhone: true } },
+        rider: { select: { id: true, name: true, phone: true } }
+      },
+      take: 200
+    });
+  }
+
+  async approvePayout(payoutId: string, dto: ApprovePayoutDto, actorId?: string) {
+    const payout = await this.prisma.payout.findUnique({ where: { id: payoutId } });
+    if (!payout) {
+      throw new NotFoundException("Payout not found");
+    }
+
+    const status = dto.status as PayoutStatus;
+    const updated = await this.prisma.payout.update({
+      where: { id: payoutId },
+      data: {
+        status,
+        approvedBy: actorId,
+        approvedAt: new Date(),
+        paidAt: status === "PAYOUT_PAID" ? new Date() : payout.paidAt,
+        adjustmentNote: dto.adjustment_note ?? payout.adjustmentNote
+      },
+      include: {
+        vendor: { select: { id: true, shopName: true, ownerPhone: true } },
+        rider: { select: { id: true, name: true, phone: true } }
+      }
+    });
+
+    await this.auditAdminAction({
+      actorId,
+      action: "admin.payout_updated",
+      entityType: "payout",
+      entityId: payoutId,
+      reason: dto.reason,
+      metadata: { fromStatus: payout.status, toStatus: dto.status }
+    });
+
+    return updated;
   }
 
   private auditAdminAction(input: {

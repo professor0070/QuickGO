@@ -1,14 +1,19 @@
 import "reflect-metadata";
-import helmet from "helmet";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
+import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
+import fastifyHelmet from "@fastify/helmet";
+import fastifyMultipart from "@fastify/multipart";
 import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/http/all-exceptions.filter";
 import { ApiResponseInterceptor } from "./common/http/api-response.interceptor";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter()
+  );
   const config = app.get(ConfigService);
 
   app.setGlobalPrefix("api/v1");
@@ -16,7 +21,8 @@ async function bootstrap() {
     origin: config.getOrThrow<string>("ADMIN_APP_URL").split(","),
     credentials: true
   });
-  app.use(helmet());
+  await app.register(fastifyHelmet);
+  await app.register(fastifyMultipart);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalInterceptors(new ApiResponseInterceptor());

@@ -3,7 +3,7 @@ import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import 'package:quickgo_shared_auth/quickgo_auth.dart';
 
 final apiClientProvider = Provider<QuickGoApiClient>((ref) {
-  return QuickGoApiClient(baseUrl: 'http://localhost:3000/api/v1');
+  return QuickGoApiClient();
 });
 
 final authRepositoryProvider = Provider<QuickGoAuthRepository>((ref) {
@@ -77,4 +77,18 @@ final vendorComplianceProvider = FutureProvider<List<dynamic>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (!session.isAuthenticated) return const [];
   return client.getList('/vendor/compliance-documents');
+});
+
+final riderDashboardProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated || !session.isRider) return const {};
+  return client.getMap('/rider/dashboard');
+});
+
+final riderOrdersProvider = FutureProvider<List<dynamic>>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated || !session.isRider) return const [];
+  return client.getList('/rider/orders');
 });

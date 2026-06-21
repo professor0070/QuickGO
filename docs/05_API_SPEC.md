@@ -226,7 +226,7 @@ All serviceability APIs must enforce the PRD lock:
 
 ### 7.5 Check Serviceability
 
-`POST /customer/serviceability/check`
+`POST /customer/serviceability`
 
 ```json
 {
@@ -255,13 +255,13 @@ Response:
 
 ### 8.1 List Categories
 
-`GET /categories`
+`GET /catalog/categories`
 
 Role: Public/Customer
 
 ### 8.2 List Vendors
 
-`GET /vendors?category=VEGETABLE&service_zone_id=uuid&page=1&limit=20`
+`GET /catalog/vendors?category=VEGETABLES&service_zone_id=uuid&page=1&limit=20`
 
 Role: Customer
 
@@ -273,11 +273,11 @@ Rules:
 
 ### 8.3 Vendor Detail
 
-`GET /vendors/:vendorId`
+`GET /catalog/vendors/:vendorId`
 
 ### 8.4 List Products
 
-`GET /vendors/:vendorId/products?category=VEGETABLE&page=1&limit=50`
+`GET /catalog/products?vendor_id=uuid&category_id=uuid&page=1&limit=50`
 
 Product response includes:
 
@@ -403,7 +403,7 @@ Allowed only before vendor accepts.
 
 ### 11.1 Vendor Dashboard
 
-`GET /partner/vendor/dashboard`
+`GET /vendor/dashboard`
 
 Role: VENDOR_OWNER/VENDOR_STAFF
 
@@ -418,7 +418,7 @@ Returns:
 
 ### 11.2 Toggle Shop Status
 
-`PATCH /partner/vendor/shop-status`
+`PATCH /vendor/shop-status`
 
 ```json
 {
@@ -428,17 +428,17 @@ Returns:
 
 ### 11.3 List Vendor Orders
 
-`GET /partner/vendor/orders?status=PLACED&page=1&limit=20`
+`GET /vendor/orders?status=PLACED&page=1&limit=20`
 
 ### 11.4 Accept Order
 
-`POST /partner/vendor/orders/:orderId/accept`
+`POST /vendor/orders/:orderId/accept`
 
 Idempotency-Key required.
 
 ### 11.5 Reject Order
 
-`POST /partner/vendor/orders/:orderId/reject`
+`POST /vendor/orders/:orderId/reject`
 
 ```json
 {
@@ -448,19 +448,19 @@ Idempotency-Key required.
 
 ### 11.6 Mark Preparing/Packing
 
-`POST /partner/vendor/orders/:orderId/preparing`
+`POST /vendor/orders/:orderId/preparing`
 
 ### 11.7 Mark Ready For Pickup
 
-`POST /partner/vendor/orders/:orderId/ready`
+`POST /vendor/orders/:orderId/ready`
 
 ### 11.8 List Vendor Products
 
-`GET /partner/vendor/products`
+`GET /vendor/products`
 
 ### 11.9 Toggle Product Availability
 
-`PATCH /partner/vendor/products/:productId/availability`
+`PATCH /vendor/products/:productId/availability`
 
 ```json
 {
@@ -470,7 +470,7 @@ Idempotency-Key required.
 
 ### 11.10 Update Product Price
 
-`PATCH /partner/vendor/products/:productId/price`
+`PATCH /vendor/products/:productId/price`
 
 ```json
 {
@@ -487,11 +487,11 @@ Rule: price update creates new `product_prices` record.
 
 ### 12.1 Rider Dashboard
 
-`GET /partner/rider/dashboard`
+`GET /rider/dashboard`
 
 ### 12.2 Toggle Online Status
 
-`PATCH /partner/rider/online-status`
+`PATCH /rider/online-status`
 
 ```json
 {
@@ -501,11 +501,11 @@ Rule: price update creates new `product_prices` record.
 
 ### 12.3 List Assigned Orders
 
-`GET /partner/rider/orders?status=RIDER_ASSIGNED`
+`GET /rider/orders?status=RIDER_ASSIGNED`
 
 ### 12.4 Get Assigned Order Detail
 
-`GET /partner/rider/orders/:orderId`
+`GET /rider/orders/:orderId`
 
 Rules:
 
@@ -513,11 +513,11 @@ Rules:
 
 ### 12.5 Mark Picked Up
 
-`POST /partner/rider/orders/:orderId/picked-up`
+`POST /rider/orders/:orderId/picked-up`
 
 ### 12.6 Mark Delivered
 
-`POST /partner/rider/orders/:orderId/delivered`
+`POST /rider/orders/:orderId/delivered`
 
 ```json
 {
@@ -528,7 +528,7 @@ Rules:
 
 ### 12.7 Mark Payment Collected
 
-`POST /partner/rider/orders/:orderId/payment-collected`
+`POST /rider/orders/:orderId/payment-collected`
 
 ```json
 {
@@ -541,7 +541,7 @@ Rules:
 
 ### 12.8 Report Issue
 
-`POST /partner/rider/orders/:orderId/report-issue`
+`POST /rider/issues`
 
 ```json
 {
@@ -633,31 +633,24 @@ Reconcile body:
 
 ```json
 {
-  "status": "RECONCILED",
-  "amount_collected_paise": 25000,
-  "collector_type": "RIDER",
-  "collector_id": "uuid",
-  "note": "Cash received from rider"
+  "status": "VERIFIED",
+  "amount_collected": 250,
+  "reason": "Cash received from rider and verified"
 }
 ```
 
 ### 13.7 Settlement/Payout APIs
 
 ```txt
-GET    /admin/settlements/vendors
-POST   /admin/settlements/vendors/generate
-POST   /admin/vendor-payouts/:payoutId/mark-paid
-GET    /admin/settlements/riders
-POST   /admin/settlements/riders/generate
-POST   /admin/rider-payouts/:payoutId/mark-paid
+GET    /admin/payouts
+POST   /admin/payouts/:payoutId/approve
 ```
 
 ### 13.8 Support APIs
 
 ```txt
-GET    /admin/support/tickets
-GET    /admin/support/tickets/:ticketId
-PATCH  /admin/support/tickets/:ticketId
+GET    /admin/support-tickets
+PATCH  /admin/support-tickets/:ticketId
 POST   /admin/support/tickets/:ticketId/events
 ```
 
@@ -685,7 +678,7 @@ GET /admin/reports/payments/export
 
 ### 14.1 App Version Check
 
-`GET /system/app-version?app=CUSTOMER_ANDROID&version=1.0.0`
+`GET /system/version?app=CUSTOMER_ANDROID&version=1.0.0`
 
 Response:
 
@@ -786,7 +779,7 @@ These APIs support DPDP/privacy readiness, legal document display, consent recor
 
 ### 23A.1 Get Active Legal Documents
 
-`GET /legal-documents/active`
+`GET /legal-documents`
 
 Returns active Terms, Privacy Policy, Refund/Cancellation Policy, Delivery Policy, Vendor Policy, Rider Policy, and Grievance Contact.
 

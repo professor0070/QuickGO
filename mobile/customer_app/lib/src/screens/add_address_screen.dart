@@ -17,6 +17,8 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _pincode = TextEditingController();
+  final _latitude = TextEditingController();
+  final _longitude = TextEditingController();
   var _submitting = false;
 
   Future<void> _saveAddress() async {
@@ -42,22 +44,26 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
         'city': _city.text,
         'state': _state.text,
         'pincode': _pincode.text,
-        'latitude': 24.775, // Default local zone coordinates for testing
-        'longitude': 86.38,
+        if (_latitude.text.trim().isNotEmpty)
+          'latitude': double.tryParse(_latitude.text.trim()),
+        if (_longitude.text.trim().isNotEmpty)
+          'longitude': double.tryParse(_longitude.text.trim()),
       });
 
       ref.invalidate(addressesProvider);
       ref.read(selectedAddressProvider.notifier).state = address;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Address added successfully')),
       );
       Navigator.pop(context);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to add address: $e')),
       );
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -86,7 +92,8 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
           const SizedBox(height: 8),
           TextField(
             controller: _line2,
-            decoration: const InputDecoration(labelText: 'Address Line 2 (Optional)'),
+            decoration:
+                const InputDecoration(labelText: 'Address Line 2 (Optional)'),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -103,6 +110,20 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
             controller: _pincode,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(labelText: 'Pincode'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _latitude,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+                labelText: 'Latitude (required for serviceability)'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _longitude,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+                labelText: 'Longitude (required for serviceability)'),
           ),
           const SizedBox(height: 24),
           _submitting

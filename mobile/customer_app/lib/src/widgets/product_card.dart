@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers.dart';
 
-class ProductCard extends ConsumerWidget {
+class ProductCard extends StatelessWidget {
   const ProductCard({
     super.key,
     required this.product,
@@ -13,7 +11,7 @@ class ProductCard extends ConsumerWidget {
   final VoidCallback onAddToCart;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final name = product['name'] as String? ?? 'Product';
     final unit = product['unit'] as String? ?? 'unit';
     final isAvailable = product['isAvailable'] as bool? ?? true;
@@ -21,8 +19,12 @@ class ProductCard extends ConsumerWidget {
 
     final prices = product['prices'] as List<dynamic>? ?? const [];
     final activePrice = prices.isNotEmpty ? prices[0] : null;
-    final priceVal = activePrice != null ? double.tryParse(activePrice['price'].toString()) ?? 0.0 : 0.0;
-    final mrpVal = product['mrp'] != null ? double.tryParse(product['mrp'].toString()) ?? priceVal : priceVal;
+    final priceVal = activePrice != null
+        ? double.tryParse(activePrice['price'].toString()) ?? 0.0
+        : 0.0;
+    final mrpVal = product['mrp'] != null
+        ? double.tryParse(product['mrp'].toString()) ?? priceVal
+        : priceVal;
 
     final hasDiscount = mrpVal > priceVal;
 
@@ -36,7 +38,8 @@ class ProductCard extends ConsumerWidget {
               child: Container(
                 color: Colors.grey.shade100,
                 width: double.infinity,
-                child: const Icon(Icons.shopping_bag_outlined, size: 40, color: Colors.grey),
+                child: const Icon(Icons.shopping_bag_outlined,
+                    size: 40, color: Colors.grey),
               ),
             ),
             const SizedBox(height: 6),
@@ -82,20 +85,24 @@ class ProductCard extends ConsumerWidget {
                   ? FilledButton(
                       style: FilledButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4)),
                       ),
                       onPressed: onAddToCart,
-                      child: const Text('Add to Cart', style: TextStyle(fontSize: 11)),
+                      child: const Text('Add to Cart',
+                          style: TextStyle(fontSize: 11)),
                     )
                   : OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         padding: EdgeInsets.zero,
                         foregroundColor: Colors.red,
                         side: const BorderSide(color: Colors.red),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4)),
                       ),
                       onPressed: null,
-                      child: const Text('Out of Stock', style: TextStyle(fontSize: 11)),
+                      child: const Text('Out of Stock',
+                          style: TextStyle(fontSize: 11)),
                     ),
             ),
           ],

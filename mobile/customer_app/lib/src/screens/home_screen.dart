@@ -18,11 +18,14 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
-    const serviceable = true;
     final categoriesAsync = ref.watch(categoriesProvider);
     final vendorsAsync = ref.watch(vendorsProvider);
     final addressesAsync = ref.watch(addressesProvider);
     final cartAsync = ref.watch(cartProvider);
+    final selectedAddress = ref.watch(selectedAddressProvider);
+    final serviceabilityAsync = ref.watch(serviceabilityProvider);
+    final serviceable =
+        serviceabilityAsync.valueOrNull?['serviceable'] != false;
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -48,7 +51,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 children: [
                   Icon(Icons.search, color: Colors.grey),
                   SizedBox(width: 12),
-                  Text('Search for tomatoes, thalis, dairy...', style: TextStyle(color: Colors.grey)),
+                  Text('Search for tomatoes, thalis, dairy...',
+                      style: TextStyle(color: Colors.grey)),
                 ],
               ),
             ),
@@ -64,8 +68,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 if (addresses.isEmpty) {
                   return const Text('No address saved yet.');
                 }
-                final selected = ref.watch(selectedAddressProvider) ??
-                    addresses.firstWhere((a) => a['isDefault'] as bool? ?? false, orElse: () => addresses.first);
+                final selected = selectedAddress ??
+                    addresses.firstWhere(
+                        (a) => a['isDefault'] as bool? ?? false,
+                        orElse: () => addresses.first);
+                if (selectedAddress == null) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    ref.read(selectedAddressProvider.notifier).state = selected;
+                  });
+                }
                 return Text(
                   '${selected['receiverName']} - ${selected['line1']}, ${selected['city']}',
                   style: const TextStyle(fontWeight: FontWeight.w600),
@@ -79,7 +90,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const AddressListScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const AddressListScreen()),
                 );
               },
               child: const Text('Change/Manage Address'),
@@ -154,15 +166,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       final category = v['categoryCode'] as String? ?? '';
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.storefront, color: quickGoGreen),
-                        title: Text(shopName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        leading:
+                            const Icon(Icons.storefront, color: quickGoGreen),
+                        title: Text(shopName,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text(category),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () async {
                           try {
                             final client = ref.read(apiClientProvider);
-                            final detail = await client.getMap('/catalog/vendors/${v['id']}');
-                            final products = detail['products'] as List<dynamic>? ?? const [];
+                            final detail = await client
+                                .getMap('/catalog/vendors/${v['id']}');
+                            final products =
+                                detail['products'] as List<dynamic>? ??
+                                    const [];
 
                             if (context.mounted) {
                               showModalBottomSheet(
@@ -170,34 +188,61 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 builder: (context) => Container(
                                   padding: const EdgeInsets.all(16),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(shopName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                      Text(shopName,
+                                          style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold)),
                                       const SizedBox(height: 12),
                                       Expanded(
                                         child: products.isEmpty
-                                            ? const Center(child: Text('No products listed.'))
+                                            ? const Center(
+                                                child:
+                                                    Text('No products listed.'))
                                             : ListView.builder(
                                                 itemCount: products.length,
                                                 itemBuilder: (context, idx) {
-                                                  final product = products[idx] as Map<String, dynamic>;
-                                                  final prices = product['prices'] as List<dynamic>? ?? const [];
-                                                  final activePrice = prices.isNotEmpty ? prices[0] : null;
-                                                  final priceVal = activePrice != null ? double.tryParse(activePrice['price'].toString()) ?? 0.0 : 0.0;
+                                                  final product = products[idx]
+                                                      as Map<String, dynamic>;
+                                                  final prices = product[
+                                                              'prices']
+                                                          as List<dynamic>? ??
+                                                      const [];
+                                                  final activePrice =
+                                                      prices.isNotEmpty
+                                                          ? prices[0]
+                                                          : null;
+                                                  final priceVal = activePrice !=
+                                                          null
+                                                      ? double.tryParse(
+                                                              activePrice[
+                                                                      'price']
+                                                                  .toString()) ??
+                                                          0.0
+                                                      : 0.0;
 
                                                   return ListTile(
-                                                    title: Text(product['name'] as String? ?? ''),
-                                                    subtitle: Text('₹${priceVal.toStringAsFixed(2)} / ${product['unit']}'),
-                                                    trailing: const Icon(Icons.add_shopping_cart, color: quickGoGreen),
+                                                    title: Text(product['name']
+                                                            as String? ??
+                                                        ''),
+                                                    subtitle: Text(
+                                                        '₹${priceVal.toStringAsFixed(2)} / ${product['unit']}'),
+                                                    trailing: const Icon(
+                                                        Icons.add_shopping_cart,
+                                                        color: quickGoGreen),
                                                     onTap: () {
                                                       Navigator.pop(context);
                                                       Navigator.push(
                                                         context,
                                                         MaterialPageRoute(
-                                                          builder: (context) => ProductDetailScreen(product: {
-                                                            ...product,
-                                                            'vendor': v,
-                                                          }),
+                                                          builder: (context) =>
+                                                              ProductDetailScreen(
+                                                                  product: {
+                                                                ...product,
+                                                                'vendor': v,
+                                                              }),
                                                         ),
                                                       );
                                                     },
@@ -211,8 +256,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               );
                             }
                           } catch (e) {
+                            if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to load products: $e')),
+                              SnackBar(
+                                  content: Text('Failed to load products: $e')),
                             );
                           }
                         },
@@ -234,17 +281,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 data: (cart) {
                   final items = cart['items'] as List<dynamic>? ?? const [];
                   if (items.isEmpty) {
-                    return const Text('Your cart is empty. Add fresh veggies or delicious local food!');
+                    return const Text(
+                        'Your cart is empty. Add fresh veggies or delicious local food!');
                   }
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('${items.length} items in cart', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text('${items.length} items in cart',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
                       FilledButton(
                         onPressed: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const CartScreen()),
+                            MaterialPageRoute(
+                                builder: (context) => const CartScreen()),
                           );
                         },
                         child: const Text('View Cart'),

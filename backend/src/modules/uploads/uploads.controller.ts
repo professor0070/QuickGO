@@ -22,6 +22,25 @@ const PRODUCT_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const COMPLIANCE_DOCUMENT_MAX_BYTES = 8 * 1024 * 1024;
 const PRODUCT_IMAGE_TYPES = /^image\/(jpeg|png|webp)$/;
 const COMPLIANCE_DOCUMENT_TYPES = /^(image\/(jpeg|png|webp)|application\/pdf)$/;
+const FILE_SIGNATURES: Record<string, (buffer: Buffer) => boolean> = {
+  "image/jpeg": (buffer) =>
+    buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
+  "image/png": (buffer) =>
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a,
+  "image/webp": (buffer) =>
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP",
+  "application/pdf": (buffer) => buffer.length >= 5 && buffer.toString("ascii", 0, 5) === "%PDF-"
+};
 
 type UploadConstraint = {
   maxBytes: number;
@@ -128,6 +147,10 @@ export class UploadsController {
         }
 
         const buffer = await part.toBuffer();
+        if (buffer.byteLength > constraint.maxBytes) {
+          throw new BadRequestException("File is too large");
+        }
+        this.assertFileSignature(part.mimetype, buffer);
         file = {
           buffer,
           originalname: part.filename || "upload",
@@ -173,5 +196,12 @@ export class UploadsController {
 
     const code = String((error as { code?: unknown }).code);
     return code === "FST_REQ_FILE_TOO_LARGE" || code === "LIMIT_FILE_SIZE";
+  }
+
+  private assertFileSignature(mimetype: string, buffer: Buffer) {
+    const matches = FILE_SIGNATURES[mimetype];
+    if (!matches || !matches(buffer)) {
+      throw new BadRequestException("File content does not match declared type");
+    }
   }
 }

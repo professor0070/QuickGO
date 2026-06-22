@@ -718,6 +718,17 @@
         "responses": { "201": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/admin/vendors/{vendorId}/compliance-documents/upload": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Upload vendor compliance document with file validation",
+        "operationId": "adminUploadVendorComplianceDocument",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VendorId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/VendorComplianceUpload" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/admin/vendor-compliance-documents/{documentId}/review": {
       "patch": {
         "tags": ["Admin"],
@@ -776,6 +787,17 @@
         "responses": { "201": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/admin/riders/{riderId}/kyc-documents/upload": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Upload rider KYC document with file validation",
+        "operationId": "adminUploadRiderKycDocument",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/RiderId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/RiderKycUpload" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/admin/rider-kyc-documents/{documentId}/review": {
       "patch": {
         "tags": ["Admin"],
@@ -785,6 +807,17 @@
         "parameters": [{ "$ref": "#/components/parameters/DocumentId" }],
         "requestBody": { "$ref": "#/components/requestBodies/ReviewDocument" },
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/products/{productId}/image": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Upload product image with file validation",
+        "operationId": "adminUploadProductImage",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ProductId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/ProductImageUpload" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
       }
     },
     "/admin/products": {
@@ -1183,6 +1216,18 @@
       "PayoutUpdate": {
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayoutUpdate" } } }
+      },
+      "ProductImageUpload": {
+        "required": true,
+        "content": { "multipart/form-data": { "schema": { "$ref": "#/components/schemas/ProductImageUpload" } } }
+      },
+      "VendorComplianceUpload": {
+        "required": true,
+        "content": { "multipart/form-data": { "schema": { "$ref": "#/components/schemas/VendorComplianceUpload" } } }
+      },
+      "RiderKycUpload": {
+        "required": true,
+        "content": { "multipart/form-data": { "schema": { "$ref": "#/components/schemas/RiderKycUpload" } } }
       }
     },
     "schemas": {
@@ -1471,6 +1516,51 @@
           },
           "reason": { "type": "string" },
           "adjustment_note": { "type": "string" }
+        }
+      },
+      "ProductImageUpload": {
+        "type": "object",
+        "required": ["file", "reason"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "JPEG, PNG, or WebP image up to 3 MB"
+          },
+          "reason": { "type": "string" }
+        }
+      },
+      "VendorComplianceUpload": {
+        "type": "object",
+        "required": ["file", "type", "reason"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "JPEG, PNG, WebP, or PDF document up to 8 MB"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["FSSAI", "GST", "PAN", "AADHAAR", "SHOP_LICENSE"]
+          },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string" }
+        }
+      },
+      "RiderKycUpload": {
+        "type": "object",
+        "required": ["file", "type", "reason"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "JPEG, PNG, WebP, or PDF document up to 8 MB"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["ID_PROOF", "ADDRESS_PROOF", "DRIVING_LICENSE", "VEHICLE_RC"]
+          },
+          "reason": { "type": "string" }
         }
       }
     }

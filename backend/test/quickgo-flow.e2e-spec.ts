@@ -1,11 +1,13 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
+import fastifyMultipart from "@fastify/multipart";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { AllExceptionsFilter } from "../src/common/http/all-exceptions.filter";
 import { ApiResponseInterceptor } from "../src/common/http/api-response.interceptor";
 import { PrismaService } from "../src/modules/common/prisma.service";
+import { FILE_STORAGE } from "../src/modules/uploads/file-storage.service";
 import { InMemoryPrismaService } from "./support/in-memory-prisma";
 
 const request = require("supertest") as any;
@@ -15,20 +17,37 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   let app: NestFastifyApplication;
   let prisma: InMemoryPrismaService;
   let keyCounter = 1;
+  let storedUploads: Array<Record<string, any>>;
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET = "test-secret";
     process.env.MOCK_OTP_CODE = "123456";
     prisma = new InMemoryPrismaService();
+    storedUploads = [];
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule]
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
+      .overrideProvider(FILE_STORAGE)
+      .useValue({
+        upload: async (file: any, options: any) => {
+          storedUploads.push({ file, options });
+          return {
+            url: `stored://${options.folder}/${options.publicId}`,
+            publicId: `${options.folder}/${options.publicId}`,
+            resourceType: options.resourceType,
+            bytes: file.size,
+            format: String(file.mimetype).split("/").pop(),
+            originalName: file.originalname
+          };
+        }
+      })
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    await app.register(fastifyMultipart);
     app.setGlobalPrefix("api/v1");
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalFilters(new AllExceptionsFilter());
@@ -40,6 +59,7 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   beforeEach(() => {
     prisma.reset();
     prisma.seedUserWithRoles("9999999999", ["SUPER_ADMIN"]);
+    storedUploads.length = 0;
   });
 
   afterAll(async () => {
@@ -628,6 +648,84 @@ describe("QuickGO MVP backend flow (e2e)", () => {
       forcedActions.includes(item.action)
     );
     expect(forceAuditLogs.every((item: any) => typeof item.reason === "string" && item.reason.length > 0)).toBe(true);
+  });
+
+  it("hardens admin uploads with content validation, protected document storage, and audit logs", async () => {
+    const adminToken = await login("9999999999");
+    const setup = await createOperationalSetup(adminToken, "9411111111", "9411111112");
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+    const pdf = Buffer.from("%PDF-1.4\n%QuickGO test document\n", "ascii");
+
+    const productImage = await request(app.getHttpServer())
+      .post(`/api/v1/admin/products/${setup.productId}/image`)
+      .set("Authorization", bearer(adminToken))
+      .field("reason", "Verified product photo for launch catalog")
+      .attach("file", jpeg, { filename: "menu-photo.exe", contentType: "image/jpeg" })
+      .expect(201);
+
+    expect(productImage.body.data.imageUrl).toContain("stored://quickgo/test/products");
+    expect(storedUploads[0]).toMatchObject({
+      options: {
+        resourceType: "image",
+        accessMode: "public"
+      }
+    });
+
+    const vendorDocument = await request(app.getHttpServer())
+      .post(`/api/v1/admin/vendors/${setup.vendorId}/compliance-documents/upload`)
+      .set("Authorization", bearer(adminToken))
+      .field("type", "FSSAI")
+      .field("expires_at", "2027-12-31T23:59:59.000Z")
+      .field("reason", "FSSAI certificate collected for MVP launch")
+      .attach("file", pdf, { filename: "fssai.pdf", contentType: "application/pdf" })
+      .expect(201);
+
+    expect(vendorDocument.body.data).toMatchObject({
+      vendorId: setup.vendorId,
+      type: "FSSAI",
+      status: "PENDING"
+    });
+    expect(storedUploads[1]).toMatchObject({
+      options: {
+        resourceType: "auto",
+        accessMode: "authenticated"
+      }
+    });
+
+    const riderDocument = await request(app.getHttpServer())
+      .post(`/api/v1/admin/riders/${setup.riderId}/kyc-documents/upload`)
+      .set("Authorization", bearer(adminToken))
+      .field("type", "ID_PROOF")
+      .field("reason", "Rider ID proof collected before activation")
+      .attach("file", pdf, { filename: "rider-id.pdf", contentType: "application/pdf" })
+      .expect(201);
+
+    expect(riderDocument.body.data).toMatchObject({
+      riderId: setup.riderId,
+      type: "ID_PROOF",
+      status: "PENDING"
+    });
+    expect(storedUploads[2].options.accessMode).toBe("authenticated");
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/products/${setup.productId}/image`)
+      .set("Authorization", bearer(adminToken))
+      .field("reason", "Spoofed image should be blocked")
+      .attach("file", pdf, { filename: "spoofed.jpg", contentType: "image/jpeg" })
+      .expect(400);
+    expect(storedUploads).toHaveLength(3);
+
+    const audit = await request(app.getHttpServer())
+      .get("/api/v1/admin/audit-logs")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(audit.body.data.map((item: any) => item.action)).toEqual(
+      expect.arrayContaining([
+        "admin.product_image_uploaded",
+        "admin.vendor_compliance_document_uploaded",
+        "admin.rider_kyc_document_uploaded"
+      ])
+    );
   });
 
   it("blocks out-of-zone order placement and stale fresh cart prices", async () => {

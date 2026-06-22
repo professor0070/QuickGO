@@ -9,6 +9,12 @@ import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
 export const FILE_STORAGE = Symbol("FILE_STORAGE");
+const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/pdf": "pdf"
+};
 
 export type UploadedFile = {
   buffer: Buffer;
@@ -42,11 +48,11 @@ export class LocalFileStorageService implements FileStorageService {
   async upload(file: UploadedFile, options: StoreFileOptions): Promise<StoredFile> {
     const dir = join(process.cwd(), "public", "uploads", options.folder);
     mkdirSync(dir, { recursive: true });
-    const ext = file.originalname.split(".").pop() || "bin";
+    const ext = EXTENSION_BY_MIME_TYPE[file.mimetype] ?? "bin";
     const filename = `${options.publicId}.${ext}`;
     const filePath = join(dir, filename);
     writeFileSync(filePath, file.buffer);
-    
+
     return {
       url: `/uploads/${options.folder}/${filename}`,
       publicId: `${options.folder}/${options.publicId}`,

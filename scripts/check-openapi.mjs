@@ -30,6 +30,9 @@ const requiredPaths = [
   "/admin/vendors",
   "/admin/riders",
   "/admin/products",
+  "/admin/products/{productId}/image",
+  "/admin/vendors/{vendorId}/compliance-documents/upload",
+  "/admin/riders/{riderId}/kyc-documents/upload",
   "/admin/service-zones",
   "/admin/reports/validation-dashboard"
 ];

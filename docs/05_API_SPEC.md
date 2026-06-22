@@ -675,11 +675,30 @@ POST   /admin/support/tickets/:ticketId/events
 ```txt
 GET    /admin/compliance/vendors
 POST   /admin/vendors/:vendorId/compliance-documents
+POST   /admin/vendors/:vendorId/compliance-documents/upload
 PATCH  /admin/compliance-documents/:documentId/verify
 PATCH  /admin/compliance-documents/:documentId/reject
+POST   /admin/riders/:riderId/kyc-documents/upload
 ```
 
-### 13.10 Reports APIs
+### 13.10 Upload APIs
+
+```txt
+POST   /admin/products/:productId/image
+POST   /admin/vendors/:vendorId/compliance-documents/upload
+POST   /admin/riders/:riderId/kyc-documents/upload
+```
+
+Upload rules:
+
+- Use multipart/form-data with exactly one `file` field.
+- Product images allow JPEG, PNG, or WebP up to 3 MB.
+- Vendor compliance and rider KYC documents allow JPEG, PNG, WebP, or PDF up to 8 MB.
+- Backend validates MIME type and file signature.
+- Product images are stored public; compliance/KYC documents are stored protected/authenticated.
+- Every successful admin upload requires a reason and writes an audit log.
+
+### 13.11 Reports APIs
 
 ```txt
 GET /admin/reports/validation-dashboard

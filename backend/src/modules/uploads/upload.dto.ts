@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsIn, IsOptional, IsString } from "class-validator";
 
 export class ProductImageUploadDto {
   @IsString()
@@ -6,8 +6,8 @@ export class ProductImageUploadDto {
 }
 
 export class VendorComplianceUploadDto {
-  @IsString()
-  type!: string;
+  @IsIn(["FSSAI", "GST", "PAN", "AADHAAR", "SHOP_LICENSE"])
+  type!: "FSSAI" | "GST" | "PAN" | "AADHAAR" | "SHOP_LICENSE";
 
   @IsString()
   reason!: string;
@@ -18,8 +18,8 @@ export class VendorComplianceUploadDto {
 }
 
 export class RiderKycUploadDto {
-  @IsString()
-  type!: string;
+  @IsIn(["ID_PROOF", "ADDRESS_PROOF", "DRIVING_LICENSE", "VEHICLE_RC"])
+  type!: "ID_PROOF" | "ADDRESS_PROOF" | "DRIVING_LICENSE" | "VEHICLE_RC";
 
   @IsString()
   reason!: string;

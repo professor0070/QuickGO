@@ -101,6 +101,17 @@ enum PaymentVerificationStatus {
   REJECTED
 }
 
+enum ReconciliationAlertType {
+  COLLECTION_PENDING
+  AMOUNT_MISMATCH
+  PAYMENT_DISPUTE
+}
+
+enum ReconciliationAlertStatus {
+  OPEN
+  RESOLVED
+}
+
 enum ComplianceStatus {
   PENDING
   APPROVED
@@ -519,6 +530,7 @@ model Order {
   supportTickets              SupportTicket[]
   slaEvents                   SlaEvent[]
   paymentReconciliationEvents PaymentReconciliationEvent[]
+  paymentReconciliationAlerts PaymentReconciliationAlert[]
   invoiceReceipt              InvoiceReceipt?
   substitutions               OrderSubstitution[]
   foodSafetyIncidents         FoodSafetyIncident[]
@@ -611,6 +623,7 @@ model Payment {
   reconciledBy            String?
   order                   Order                        @relation(fields: [orderId], references: [id])
   reconciliationEvents    PaymentReconciliationEvent[]
+  reconciliationAlerts    PaymentReconciliationAlert[]
 
   @@index([orderId])
   @@index([status, createdAt])
@@ -650,6 +663,30 @@ model PaymentReconciliationEvent {
   @@index([orderId, createdAt])
   @@index([paymentId, createdAt])
   @@index([toStatus, createdAt])
+}
+
+model PaymentReconciliationAlert {
+  id              String                    @id @default(uuid())
+  orderId         String
+  paymentId       String?
+  type            ReconciliationAlertType
+  status          ReconciliationAlertStatus @default(OPEN)
+  severity        Priority                  @default(MEDIUM)
+  expectedAmount  Decimal?                  @db.Decimal(10, 2)
+  collectedAmount Decimal?                  @db.Decimal(10, 2)
+  message         String
+  metadata        Json?
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  order           Order                     @relation(fields: [orderId], references: [id])
+  payment         Payment?                  @relation(fields: [paymentId], references: [id])
+
+  @@index([status, severity, createdAt])
+  @@index([orderId, status])
+  @@index([paymentId, status])
+  @@index([type, status, createdAt])
 }
 
 model Commission {

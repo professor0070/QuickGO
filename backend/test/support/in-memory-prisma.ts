@@ -21,6 +21,7 @@ type TableName =
   | "payments"
   | "paymentCollections"
   | "paymentReconciliationEvents"
+  | "paymentReconciliationAlerts"
   | "deliveryAssignments"
   | "supportTickets"
   | "supportTicketEvents"
@@ -72,6 +73,7 @@ export class InMemoryPrismaService {
   payment: any;
   paymentCollection: any;
   paymentReconciliationEvent: any;
+  paymentReconciliationAlert: any;
   deliveryAssignment: any;
   supportTicket: any;
   notification: any;
@@ -115,6 +117,7 @@ export class InMemoryPrismaService {
       payments: [],
       paymentCollections: [],
       paymentReconciliationEvents: [],
+      paymentReconciliationAlerts: [],
       deliveryAssignments: [],
       supportTickets: [],
       supportTicketEvents: [],
@@ -879,6 +882,51 @@ export class InMemoryPrismaService {
       }
     };
 
+    this.paymentReconciliationAlert = {
+      create: async ({ data }: any) => {
+        const alert = {
+          id: this.id("paymentAlert"),
+          status: "OPEN",
+          severity: "MEDIUM",
+          expectedAmount: null,
+          collectedAmount: null,
+          metadata: null,
+          resolvedAt: null,
+          resolvedBy: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data
+        };
+        this.store.paymentReconciliationAlerts.push(alert);
+        return this.hydratePaymentReconciliationAlert(alert, undefined);
+      },
+      findFirst: async ({ where, include }: any = {}) => {
+        const alert = this.store.paymentReconciliationAlerts.find((item) =>
+          this.matches(item, where)
+        );
+        return alert ? this.hydratePaymentReconciliationAlert(alert, include) : null;
+      },
+      findMany: async ({ where, include, orderBy, take }: any = {}) =>
+        this.sort(this.store.paymentReconciliationAlerts.filter((item) => this.matches(item, where)), orderBy)
+          .slice(0, take ?? Number.POSITIVE_INFINITY)
+          .map((item) => this.hydratePaymentReconciliationAlert(item, include)),
+      update: async ({ where, data, include }: any) => {
+        const alert = this.store.paymentReconciliationAlerts.find((item) => item.id === where.id);
+        if (!alert) {
+          throw new Error("Payment reconciliation alert not found");
+        }
+        Object.assign(alert, data, { updatedAt: new Date() });
+        return this.hydratePaymentReconciliationAlert(alert, include);
+      },
+      updateMany: async ({ where, data }: any) => {
+        const rows = this.store.paymentReconciliationAlerts.filter((item) =>
+          this.matches(item, where)
+        );
+        rows.forEach((item) => Object.assign(item, data, { updatedAt: new Date() }));
+        return { count: rows.length };
+      }
+    };
+
     this.deliveryAssignment = {
       create: async ({ data }: any) => {
         const assignment = {
@@ -1261,6 +1309,12 @@ export class InMemoryPrismaService {
     if (include?.slaEvents) {
       hydrated.slaEvents = this.store.slaEvents.filter((item) => item.orderId === order.id);
     }
+    if (include?.paymentReconciliationAlerts) {
+      hydrated.paymentReconciliationAlerts = this.sort(
+        this.store.paymentReconciliationAlerts.filter((item) => item.orderId === order.id),
+        include.paymentReconciliationAlerts.orderBy
+      );
+    }
     if (include?.vendor) {
       const vendor = this.store.vendors.find((item) => item.id === order.vendorId);
       hydrated.vendor = include.vendor.select
@@ -1281,6 +1335,28 @@ export class InMemoryPrismaService {
         ? { events: this.store.supportTicketEvents.filter((event) => event.ticketId === ticket.id) }
         : {})
     };
+  }
+
+  private hydratePaymentReconciliationAlert(alert: Record<string, any>, include: any) {
+    const hydrated = { ...alert };
+    if (include?.order) {
+      const order = this.store.orders.find((item) => item.id === alert.orderId);
+      if (order) {
+        hydrated.order = include.order.select
+          ? this.selectFields(
+              {
+                ...order,
+                vendor: this.store.vendors.find((vendor) => vendor.id === order.vendorId)
+              },
+              include.order.select
+            )
+          : this.hydrateOrder(order, include.order.include);
+      }
+    }
+    if (include?.payment) {
+      hydrated.payment = this.store.payments.find((item) => item.id === alert.paymentId) ?? null;
+    }
+    return hydrated;
   }
 
   private withUserRoles(user: Record<string, any>) {

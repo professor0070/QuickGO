@@ -46,10 +46,12 @@ Phase 7 began after the Phase 6 locked baseline. The first backend-only slice ad
 - Added backend-controlled admin attention queue for manual operations SLA alerts: vendor acceptance delay, rider assignment delay, and pickup delay.
 - Added breached SLA event persistence and automatic breach resolution when the relevant lifecycle event occurs.
 - Added `GET /admin/attention-queue` to the backend contract and OpenAPI required-path check.
+- Added persistent payment reconciliation alert records for collection-pending, amount-mismatch, and dispute follow-up.
+- Added `GET /admin/reconciliation-alerts` to expose open reconciliation alerts to founder/admin operations without changing payment collection semantics.
 
 ## Remaining Product Work
 
-- Continue replacing remaining event-handler log boundaries with production persistence where needed, especially reconciliation alert records and mobile crash/error integrations.
+- Continue replacing remaining event-handler log boundaries with production persistence where needed, especially mobile crash/error integrations.
 - Add production SMS provider behind the OTP adapter when vendor/legal/provider choice is finalized.
 - Upload code for product images and compliance/KYC documents already exists, but it is outside the clean Phase 6 scope and must be reviewed/finished as later-phase work.
 - Generate Flutter platform folders once Flutter SDK is installed.

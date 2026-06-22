@@ -25,6 +25,7 @@ const requiredPaths = [
   "/support/tickets",
   "/admin/dashboard",
   "/admin/attention-queue",
+  "/admin/reconciliation-alerts",
   "/admin/orders",
   "/admin/vendors",
   "/admin/riders",

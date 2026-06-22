@@ -81,13 +81,22 @@ export class RidersController {
     @Param("orderId") orderId: string,
     @Body() body: MarkPaymentCollectedDto
   ) {
-    const collection = await this.ridersService.markPaymentCollected(user.id, orderId, body);
+    const result = await this.ridersService.markPaymentCollected(user.id, orderId, body);
     await this.eventBus.publish(
       "payment.collected",
-      { orderId, amount: body.amount },
+      {
+        orderId,
+        paymentId: result.payment.id,
+        amount: body.amount,
+        ...(result.payment.collectorType ? { collectorType: result.payment.collectorType } : {}),
+        ...(result.payment.collectorId ? { collectorId: result.payment.collectorId } : {}),
+        ...(result.payment.paymentMethodActual
+          ? { paymentMethodActual: result.payment.paymentMethodActual }
+          : {})
+      },
       eventMetadata("riders.controller", request)
     );
-    return collection;
+    return result;
   }
 
   @Post("issues")

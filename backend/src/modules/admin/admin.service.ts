@@ -162,6 +162,27 @@ export class AdminService {
     return items.sort((left, right) => right.age_minutes - left.age_minutes);
   }
 
+  reconciliationAlerts() {
+    return this.prisma.paymentReconciliationAlert.findMany({
+      where: { status: "OPEN" },
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            paymentStatus: true,
+            totalAmount: true,
+            vendor: { select: { id: true, shopName: true } }
+          }
+        },
+        payment: true
+      },
+      orderBy: [{ severity: "desc" }, { createdAt: "asc" }],
+      take: 100
+    });
+  }
+
   orders() {
     return this.prisma.order.findMany({
       orderBy: { createdAt: "desc" },
@@ -184,7 +205,8 @@ export class AdminService {
         collections: true,
         deliveryAssignments: true,
         supportTickets: true,
-        slaEvents: true
+        slaEvents: true,
+        paymentReconciliationAlerts: { orderBy: { createdAt: "asc" } }
       }
     });
 

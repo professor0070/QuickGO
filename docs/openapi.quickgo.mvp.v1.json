@@ -573,6 +573,15 @@
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/admin/reconciliation-alerts": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List open payment reconciliation alerts",
+        "operationId": "adminReconciliationAlerts",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/admin/orders": {
       "get": {
         "tags": ["Admin"],

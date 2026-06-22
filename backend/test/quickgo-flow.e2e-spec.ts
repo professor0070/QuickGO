@@ -241,6 +241,120 @@ describe("QuickGO MVP backend flow (e2e)", () => {
     expect(breach.resolvedAt).toBeTruthy();
   });
 
+  it("persists payment reconciliation alerts for amount mismatches and resolves them after verification", async () => {
+    const adminToken = await login("9999999999");
+    const setup = await createOperationalSetup(adminToken, "9540000001", "9540000002");
+    const customerToken = await login("9540000003");
+    const order = await placeOrder(customerToken, setup.productId, "COD", "mismatch-create");
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/accept`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .set("Idempotency-Key", nextKey("mismatch-accept"))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/preparing`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/ready`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/orders/${order.id}/assign-rider`)
+      .set("Authorization", bearer(adminToken))
+      .set("Idempotency-Key", nextKey("mismatch-assign"))
+      .send({ rider_id: setup.riderId, reason: "Manual dispatch for reconciliation mismatch" })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/picked-up`)
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/delivered`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("mismatch-delivered"))
+      .expect(201);
+
+    const shortAmount = Number(order.totalAmount) - 5;
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/payment-collected`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("mismatch-payment"))
+      .send({ amount: shortAmount, payment_method_actual: "COD", note: "Cash short by five" })
+      .expect(201);
+    await flushEvents();
+
+    const payment = prisma.paymentForOrder(order.id)!;
+    const alerts = await request(app.getHttpServer())
+      .get("/api/v1/admin/reconciliation-alerts")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+
+    expect(alerts.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          orderId: order.id,
+          paymentId: payment.id,
+          type: "AMOUNT_MISMATCH",
+          status: "OPEN",
+          severity: "HIGH"
+        })
+      ])
+    );
+
+    const beforeReconcile = await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders/${order.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(beforeReconcile.body.data.paymentReconciliationAlerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "COLLECTION_PENDING", status: "OPEN" }),
+        expect.objectContaining({ type: "AMOUNT_MISMATCH", status: "OPEN" })
+      ])
+    );
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/payments/${payment.id}/reconcile`)
+      .set("Authorization", bearer(adminToken))
+      .set("Idempotency-Key", nextKey("mismatch-reconcile"))
+      .send({
+        status: "VERIFIED",
+        amount_collected: Number(order.totalAmount),
+        reason: "Short cash recovered and matched during daily close"
+      })
+      .expect(200);
+    await flushEvents();
+
+    const afterReconcile = await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders/${order.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(
+      afterReconcile.body.data.paymentReconciliationAlerts.filter(
+        (item: any) => item.paymentId === payment.id
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "COLLECTION_PENDING", status: "RESOLVED" }),
+        expect.objectContaining({ type: "AMOUNT_MISMATCH", status: "RESOLVED" })
+      ])
+    );
+
+    const remainingAlerts = await request(app.getHttpServer())
+      .get("/api/v1/admin/reconciliation-alerts")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(
+      remainingAlerts.body.data.filter((item: any) => item.paymentId === payment.id)
+    ).toHaveLength(0);
+  });
+
   it("completes a UPI-on-delivery order when admin records collection", async () => {
     const adminToken = await login("9999999999");
     const setup = await createOperationalSetup(adminToken, "9777777777", "9666666666");

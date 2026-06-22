@@ -55,10 +55,17 @@ export type DomainEventMap = {
   };
   "payment.collected": {
     orderId: string;
+    paymentId?: string;
     amount: number;
+    collectorType?: string;
+    collectorId?: string;
+    paymentMethodActual?: string;
   };
   "payment.reconciled": {
     paymentId: string;
+    orderId?: string;
+    status?: string;
+    amountCollected?: number;
     reason: string;
   };
   "support.ticket_created": {
@@ -86,4 +93,3 @@ export type DomainEvent<TName extends DomainEventName = DomainEventName> = {
 export type DomainEventHandler<TName extends DomainEventName = DomainEventName> = (
   event: DomainEvent<TName>
 ) => void | Promise<void>;
-

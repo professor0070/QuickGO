@@ -638,10 +638,12 @@ Assign rider body:
 ### 13.6 Payment Reconciliation
 
 ```txt
-GET    /admin/payments/pending
-GET    /admin/orders/:orderId/payments
-POST   /admin/orders/:orderId/reconcile-payment
+GET    /admin/reconciliation-alerts
+POST   /admin/orders/:orderId/payment-collected
+PATCH  /admin/payments/:paymentId/reconcile
 ```
+
+`GET /admin/reconciliation-alerts` returns open backend-persisted payment collection and mismatch alerts for founder/admin daily closing.
 
 Reconcile body:
 

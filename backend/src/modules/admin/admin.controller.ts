@@ -46,6 +46,11 @@ export class AdminController {
     return this.admin.attentionQueue();
   }
 
+  @Get("reconciliation-alerts")
+  reconciliationAlerts() {
+    return this.admin.reconciliationAlerts();
+  }
+
   @Get("orders")
   orders() {
     return this.admin.orders();
@@ -118,7 +123,13 @@ export class AdminController {
     const payment = await this.admin.reconcilePayment(paymentId, body, user.id);
     await this.eventBus.publish(
       "payment.reconciled",
-      { paymentId, reason: body.reason },
+      {
+        paymentId,
+        orderId: payment.orderId,
+        status: payment.status,
+        amountCollected: Number(payment.amountCollected),
+        reason: body.reason
+      },
       eventMetadata("admin.controller", request)
     );
     return { data: payment, message: "Payment reconciled" };
@@ -135,7 +146,14 @@ export class AdminController {
     const payment = await this.admin.markPaymentCollected(orderId, body, user.id);
     await this.eventBus.publish(
       "payment.collected",
-      { orderId, amount: body.amount },
+      {
+        orderId,
+        paymentId: payment.id,
+        amount: body.amount,
+        ...(payment.collectorType ? { collectorType: payment.collectorType } : {}),
+        ...(payment.collectorId ? { collectorId: payment.collectorId } : {}),
+        ...(payment.paymentMethodActual ? { paymentMethodActual: payment.paymentMethodActual } : {})
+      },
       eventMetadata("admin.controller", request)
     );
     return { data: payment, message: "Payment collection recorded" };

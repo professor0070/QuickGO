@@ -48,6 +48,6 @@ Implemented MVP handler boundaries:
 - `AuditEventHandler` records the audit-writing boundary for operational events.
 - `NotificationEventHandler` records where FCM/in-app notification sending attaches.
 - `OrderSlaEventHandler` tracks order lifecycle moments used by SLA monitoring.
-- `ReconciliationEventHandler` tracks payment collection and reconciliation follow-up.
+- `ReconciliationEventHandler` persists payment collection, mismatch, and dispute alerts for admin reconciliation follow-up.
 
 For MVP, handlers run in the same process. If QuickGO later needs background processing, the event bus can publish to an outbox table or queue without changing public APIs.

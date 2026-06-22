@@ -618,6 +618,27 @@ Actual collection events.
 
 Rule: No order becomes `COMPLETED` until payment is reconciled or admin explicitly marks exception.
 
+### 14.3 `payment_reconciliation_alerts`
+
+Durable founder/admin follow-up records for pending collection verification, amount mismatches, and payment disputes.
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| id | uuid | yes | PK |
+| order_id | uuid | yes | FK orders |
+| payment_id | uuid | no | FK payments |
+| type | varchar(40) | yes | COLLECTION_PENDING/AMOUNT_MISMATCH/PAYMENT_DISPUTE |
+| status | varchar(40) | yes | OPEN/RESOLVED |
+| severity | varchar(20) | yes | MEDIUM/HIGH/URGENT |
+| expected_amount | decimal(10,2) | no | order/payment amount expected |
+| collected_amount | decimal(10,2) | no | actual collected amount |
+| message | text | yes | operator-facing summary |
+| metadata | jsonb | no | event/request context |
+| resolved_at | timestamptz | no | set when reconciled |
+| resolved_by | uuid | no | admin actor id |
+| created_at | timestamptz | yes |  |
+| updated_at | timestamptz | yes |  |
+
 ---
 
 ## 15. Settlement and Payout Tables

@@ -57,6 +57,28 @@ Phase 7 lock readiness was audited on 2026-06-22 and approved. The formal report
 
 Phase 7 is locked for the controlled MVP baseline. Remaining items are external launch dependencies or later release setup, not Phase 7 code blockers. Phase 8 may be planned after this baseline, but Phase 8 code changes must wait for explicit confirmation.
 
+## Phase 8 Partner App Rider Mode
+
+Phase 8 was implemented on 2026-06-22 within the locked MVP scope. The formal execution plan is recorded in `docs/PHASE_8_EXECUTION_PLAN.md`.
+
+Implemented Phase 8 work:
+
+- Added rider profile view/edit APIs and Partner App surface.
+- Added rider self-service KYC document list/submission APIs and Partner App surface.
+- Added rider accept/reject assigned order APIs with idempotency and assigned-rider permission checks.
+- Added proof-of-delivery reference/status APIs and Partner App submission/status display.
+- Added rider order history API and Partner App history surface.
+- Added rider action audit logs for availability, profile, KYC, accept/reject, and proof submission.
+- Added admin rider operations visibility through `GET /admin/rider-operations` and the admin Riders tab.
+- Added additive Prisma migration for delivery assignment accept/reject metadata and delivery proof status/relations.
+- Updated OpenAPI contract and root contract checks for Phase 8 routes.
+- Added backend e2e coverage for assigned-only rider access, KYC, accept/reject, delivery proof, history, admin operations visibility, and audit logs.
+- Added Partner App call/map buttons using Android URL intents; no live tracking, auto-dispatch, route optimization, rider wallet, payout expansion, gamification, referral, or Phase 9 work was added.
+
+Phase 8 validation passed for Prisma validate/generate, backend lint/build/unit/e2e, admin lint/test/type/build, Partner App analyze/test, root checks, and production high/critical audit. Partner App Android debug APK build timed out in Gradle without producing an APK artifact; this is documented in the Phase 8 reports as a release-packaging environment caveat, not a source/analyze/test failure.
+
+The completion report is recorded in `docs/PHASE_8_COMPLETION_REPORT.md`. The lock audit report is recorded in `docs/PHASE_8_LOCK_AUDIT_REPORT.md`.
+
 ## Remaining Product Work
 
 - Add production SMS provider behind the OTP adapter when vendor/legal/provider choice is finalized.

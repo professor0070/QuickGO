@@ -55,6 +55,7 @@ const CANCELLATION_STATUSES: OrderStatus[] = [
 const SLA_THRESHOLDS_MINUTES = {
   VENDOR_ACCEPTANCE_DELAY: 10,
   RIDER_ASSIGNMENT_DELAY: 10,
+  RIDER_REASSIGNMENT_DELAY: 10,
   PICKUP_DELAY: 20
 } as const;
 
@@ -139,7 +140,7 @@ export class AdminService {
     const orders = await this.prisma.order.findMany({
       where: {
         status: {
-          in: ["PLACED", "READY_FOR_PICKUP", "RIDER_ASSIGNED"]
+          in: ["PLACED", "READY_FOR_PICKUP", "RIDER_ASSIGNED", "RIDER_FAILED"]
         }
       },
       include: {
@@ -206,6 +207,7 @@ export class AdminService {
         deliveryAssignments: true,
         supportTickets: true,
         slaEvents: true,
+        deliveryProofs: { orderBy: { createdAt: "desc" } },
         paymentReconciliationAlerts: { orderBy: { createdAt: "asc" } }
       }
     });
@@ -256,6 +258,16 @@ export class AdminService {
         type: "PICKUP_DELAY",
         since: order.assignedAt ?? order.createdAt,
         message: "Assigned rider has not marked pickup yet"
+      });
+    }
+
+    if (order.status === "RIDER_FAILED") {
+      return this.buildAttentionItem({
+        order,
+        now,
+        type: "RIDER_REASSIGNMENT_DELAY",
+        since: order.assignedAt ?? order.createdAt,
+        message: "Assigned rider rejected or failed this order; reassign manually"
       });
     }
 
@@ -654,6 +666,33 @@ export class AdminService {
     return this.prisma.rider.findMany({
       orderBy: { createdAt: "desc" },
       include: { serviceZone: true, user: true }
+    });
+  }
+
+  riderOperations() {
+    return this.prisma.deliveryAssignment.findMany({
+      orderBy: { assignedAt: "desc" },
+      take: 100,
+      include: {
+        rider: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            isOnline: true,
+            status: true,
+            onboardingStatus: true
+          }
+        },
+        order: {
+          include: {
+            vendor: { select: { id: true, shopName: true, ownerPhone: true } },
+            deliveryProofs: { orderBy: { createdAt: "desc" } },
+            history: { orderBy: { createdAt: "asc" } },
+            payments: true
+          }
+        }
+      }
     });
   }
 

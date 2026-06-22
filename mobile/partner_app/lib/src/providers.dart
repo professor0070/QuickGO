@@ -86,9 +86,30 @@ final riderDashboardProvider = FutureProvider<Map<String, dynamic>>((ref) async 
   return client.getMap('/rider/dashboard');
 });
 
+final riderProfileProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated || !session.isRider) return const {};
+  return client.getMap('/rider/profile');
+});
+
+final riderKycDocumentsProvider = FutureProvider<List<dynamic>>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated || !session.isRider) return const [];
+  return client.getList('/rider/kyc-documents');
+});
+
 final riderOrdersProvider = FutureProvider<List<dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final session = ref.watch(sessionProvider);
   if (!session.isAuthenticated || !session.isRider) return const [];
   return client.getList('/rider/orders');
+});
+
+final riderOrderHistoryProvider = FutureProvider<List<dynamic>>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated || !session.isRider) return const [];
+  return client.getList('/rider/order-history');
 });

@@ -215,6 +215,11 @@ export class AdminController {
     return this.admin.riders();
   }
 
+  @Get("rider-operations")
+  riderOperations() {
+    return this.admin.riderOperations();
+  }
+
   @Post("riders")
   async createRider(@Body() body: CreateRiderDto) {
     return { data: await this.admin.createRider(body), message: "Rider created" };

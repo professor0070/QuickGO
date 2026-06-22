@@ -20,7 +20,10 @@ export const CRITICAL_IDEMPOTENT_ACTIONS = [
   "ACCEPT_ORDER",
   "REJECT_ORDER",
   "ASSIGN_RIDER",
+  "RIDER_ACCEPT_ORDER",
+  "RIDER_REJECT_ORDER",
   "MARK_DELIVERED",
+  "SUBMIT_DELIVERY_PROOF",
   "MARK_PAYMENT_COLLECTED",
   "RECONCILE_PAYMENT",
   "APPROVE_PAYOUT"
@@ -38,4 +41,3 @@ export const MVP_EXCLUDED_FEATURES = [
   "multi_vendor_cart",
   "ios_public_launch"
 ] as const;
-

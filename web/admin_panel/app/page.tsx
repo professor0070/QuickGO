@@ -37,6 +37,7 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [riders, setRiders] = useState<any[]>([]);
+  const [riderOperations, setRiderOperations] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [supportTickets, setSupportTickets] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -244,8 +245,12 @@ export default function AdminDashboard() {
         const v = await fetchWithAuth("/admin/vendors");
         setVendors(v || []);
       } else if (activeTab === "Riders") {
-        const r = await fetchWithAuth("/admin/riders");
+        const [r, operations] = await Promise.all([
+          fetchWithAuth("/admin/riders"),
+          fetchWithAuth("/admin/rider-operations")
+        ]);
         setRiders(r || []);
+        setRiderOperations(operations || []);
       } else if (activeTab === "Products") {
         const p = await fetchWithAuth("/admin/products");
         setProducts(p || []);
@@ -1012,6 +1017,7 @@ export default function AdminDashboard() {
               )}
 
               {activeTab === "Riders" && (
+                <div className="space-y-4">
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-left text-sm">
@@ -1083,6 +1089,71 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-200 bg-slate-50 px-5 py-3">
+                    <h2 className="text-sm font-bold text-slate-700">Recent Rider Operations</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                        <tr>
+                          <th className="px-5 py-3">Order</th>
+                          <th className="px-5 py-3">Rider</th>
+                          <th className="px-5 py-3">Status</th>
+                          <th className="px-5 py-3">Assignment</th>
+                          <th className="px-5 py-3">Pickup/Delivery</th>
+                          <th className="px-5 py-3">Proofs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {riderOperations.length === 0 ? (
+                          <tr>
+                            <td className="px-5 py-8 text-center text-slate-500" colSpan={6}>
+                              No rider operations recorded.
+                            </td>
+                          </tr>
+                        ) : (
+                          riderOperations.map((operation) => (
+                            <tr key={operation.id} className="hover:bg-slate-50">
+                              <td className="px-5 py-3 font-semibold">
+                                #{operation.order?.orderNumber || operation.orderId}
+                                <div className="text-xs font-normal text-slate-500">
+                                  {operation.order?.vendor?.shopName || "Vendor"}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3">
+                                {operation.rider?.name || operation.riderId}
+                                <div className="text-xs text-slate-500">{operation.rider?.phone}</div>
+                              </td>
+                              <td className="px-5 py-3">
+                                <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                                  {operation.order?.status || "UNKNOWN"}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-slate-600">
+                                <div>Assigned: {operation.assignedAt ? new Date(operation.assignedAt).toLocaleString() : "-"}</div>
+                                <div>Accepted: {operation.acceptedAt ? new Date(operation.acceptedAt).toLocaleString() : "-"}</div>
+                                {operation.rejectedAt && (
+                                  <div className="text-red-700">
+                                    Rejected: {operation.rejectionReason || "No reason"}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-5 py-3 text-slate-600">
+                                <div>Pickup: {operation.pickedAt ? new Date(operation.pickedAt).toLocaleString() : "-"}</div>
+                                <div>Delivery: {operation.deliveredAt ? new Date(operation.deliveredAt).toLocaleString() : "-"}</div>
+                              </td>
+                              <td className="px-5 py-3 text-slate-600">
+                                {operation.order?.deliveryProofs?.length || 0}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
                 </div>
               )}
 

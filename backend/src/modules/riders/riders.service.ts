@@ -1,12 +1,77 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { PaymentMethod } from "@prisma/client";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { PaymentMethod, Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { assertOrderTransition, OrderStatus } from "../orders/order-state.machine";
-import { MarkPaymentCollectedDto, ToggleRiderOnlineDto } from "./rider.dto";
+import {
+  CreateRiderKycDocumentDto,
+  MarkPaymentCollectedDto,
+  RejectAssignedOrderDto,
+  SubmitDeliveryProofDto,
+  ToggleRiderOnlineDto,
+  UpdateRiderProfileDto
+} from "./rider.dto";
 
 @Injectable()
 export class RidersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async profile(userId: string) {
+    const rider = await this.prisma.rider.findUnique({
+      where: { userId },
+      include: {
+        user: true,
+        serviceZone: true,
+        kycDocuments: { orderBy: { createdAt: "desc" } }
+      }
+    });
+    if (!rider) {
+      throw new NotFoundException("Rider profile not found for user");
+    }
+    return rider;
+  }
+
+  async updateProfile(userId: string, dto: UpdateRiderProfileDto) {
+    const rider = await this.riderForUser(userId);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (dto.name !== undefined) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { name: dto.name }
+        });
+      }
+
+      const riderUpdate: Prisma.RiderUpdateInput = {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.vehicle_type !== undefined ? { vehicleType: dto.vehicle_type } : {}),
+        ...(dto.vehicle_number !== undefined ? { vehicleNumber: dto.vehicle_number } : {})
+      };
+
+      const saved = await tx.rider.update({
+        where: { id: rider.id },
+        data: riderUpdate,
+        include: {
+          user: true,
+          serviceZone: true,
+          kycDocuments: { orderBy: { createdAt: "desc" } }
+        }
+      });
+
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.profile_updated",
+        entityType: "rider",
+        entityId: rider.id,
+        reason: "Rider updated profile",
+        metadata: {
+          updatedFields: Object.keys(dto)
+        }
+      });
+
+      return saved;
+    });
+
+    return updated;
+  }
 
   async dashboard(userId: string) {
     const rider = await this.riderForUser(userId);
@@ -34,9 +99,54 @@ export class RidersService {
 
   async toggleOnline(userId: string, dto: ToggleRiderOnlineDto) {
     const rider = await this.riderForUser(userId);
-    return this.prisma.rider.update({
-      where: { id: rider.id },
-      data: { isOnline: dto.is_online }
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.rider.update({
+        where: { id: rider.id },
+        data: { isOnline: dto.is_online }
+      });
+
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.availability_updated",
+        entityType: "rider",
+        entityId: rider.id,
+        reason: dto.is_online ? "Rider went online" : "Rider went offline",
+        metadata: { isOnline: dto.is_online }
+      });
+
+      return updated;
+    });
+  }
+
+  async kycDocuments(userId: string) {
+    const rider = await this.riderForUser(userId);
+    return this.prisma.riderKycDocument.findMany({
+      where: { riderId: rider.id },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async createKycDocument(userId: string, dto: CreateRiderKycDocumentDto) {
+    const rider = await this.riderForUser(userId);
+    return this.prisma.$transaction(async (tx) => {
+      const document = await tx.riderKycDocument.create({
+        data: {
+          riderId: rider.id,
+          type: dto.type,
+          documentUrl: dto.document_url
+        }
+      });
+
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.kyc_document_submitted",
+        entityType: "rider_kyc_document",
+        entityId: document.id,
+        reason: `Rider submitted ${dto.type} document`,
+        metadata: { riderId: rider.id, type: dto.type }
+      });
+
+      return document;
     });
   }
 
@@ -51,7 +161,9 @@ export class RidersService {
       include: {
         items: true,
         vendor: { select: { id: true, shopName: true, ownerPhone: true, addressLine: true } },
-        payments: true
+        payments: true,
+        deliveryAssignments: true,
+        deliveryProofs: true
       }
     });
   }
@@ -65,13 +177,135 @@ export class RidersService {
         vendor: true,
         payments: true,
         collections: true,
-        deliveryAssignments: true
+        deliveryAssignments: true,
+        deliveryProofs: true
       }
     });
     if (!order) {
       throw new NotFoundException("Assigned order not found");
     }
     return order;
+  }
+
+  async orderHistory(userId: string) {
+    const rider = await this.riderForUser(userId);
+    const assignments = await this.prisma.deliveryAssignment.findMany({
+      where: { riderId: rider.id },
+      orderBy: { assignedAt: "desc" },
+      take: 100,
+      include: {
+        order: {
+          include: {
+            items: true,
+            vendor: { select: { id: true, shopName: true, ownerPhone: true, addressLine: true } },
+            payments: true,
+            deliveryProofs: true
+          }
+        }
+      }
+    });
+
+    return assignments.map((assignment) => ({
+      ...assignment.order,
+      rider_assignment: {
+        id: assignment.id,
+        assignedAt: assignment.assignedAt,
+        acceptedAt: assignment.acceptedAt,
+        rejectedAt: assignment.rejectedAt,
+        rejectionReason: assignment.rejectionReason,
+        pickedAt: assignment.pickedAt,
+        deliveredAt: assignment.deliveredAt,
+        isActive: assignment.isActive
+      }
+    }));
+  }
+
+  async acceptAssignedOrder(userId: string, orderId: string) {
+    const rider = await this.riderForUser(userId);
+    const order = await this.assignedOrderDetail(userId, orderId);
+    if (order.status !== "RIDER_ASSIGNED") {
+      throw new BadRequestException("Only assigned orders awaiting rider action can be accepted");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.deliveryAssignment.updateMany({
+        where: { orderId, riderId: rider.id, isActive: true },
+        data: {
+          acceptedAt: new Date(),
+          rejectedAt: null,
+          rejectionReason: null
+        }
+      });
+      if (result.count === 0) {
+        throw new NotFoundException("Active rider assignment not found");
+      }
+
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.order_accepted",
+        entityType: "order",
+        entityId: orderId,
+        reason: "Rider accepted assigned order",
+        metadata: { riderId: rider.id, status: order.status }
+      });
+    });
+
+    return this.assignedOrderDetail(userId, orderId);
+  }
+
+  async rejectAssignedOrder(userId: string, orderId: string, dto: RejectAssignedOrderDto) {
+    const rider = await this.riderForUser(userId);
+    const order = await this.assignedOrderDetail(userId, orderId);
+    assertOrderTransition(order.status as OrderStatus, "RIDER_FAILED");
+
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.deliveryAssignment.updateMany({
+        where: { orderId, riderId: rider.id, isActive: true },
+        data: {
+          rejectedAt: new Date(),
+          rejectionReason: dto.reason,
+          isActive: false
+        }
+      });
+      if (result.count === 0) {
+        throw new NotFoundException("Active rider assignment not found");
+      }
+
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          riderId: null,
+          status: "RIDER_FAILED",
+          history: {
+            create: {
+              fromStatus: order.status,
+              toStatus: "RIDER_FAILED",
+              actorId: userId,
+              reason: dto.reason
+            }
+          }
+        },
+        include: {
+          items: true,
+          vendor: true,
+          payments: true,
+          collections: true,
+          deliveryAssignments: true,
+          deliveryProofs: true
+        }
+      });
+
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.order_rejected",
+        entityType: "order",
+        entityId: orderId,
+        reason: dto.reason,
+        metadata: { riderId: rider.id, fromStatus: order.status, toStatus: "RIDER_FAILED" }
+      });
+
+      return updated;
+    });
   }
 
   async markPickedUp(userId: string, orderId: string) {
@@ -125,6 +359,49 @@ export class RidersService {
           }
         }
       }
+    });
+  }
+
+  async deliveryProofsForOrder(userId: string, orderId: string) {
+    const rider = await this.riderForUser(userId);
+    await this.assignedOrderDetail(userId, orderId);
+    return this.prisma.deliveryProof.findMany({
+      where: { orderId, riderId: rider.id },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async submitDeliveryProof(userId: string, orderId: string, dto: SubmitDeliveryProofDto) {
+    const rider = await this.riderForUser(userId);
+    const order = await this.assignedOrderDetail(userId, orderId);
+    if (!["PICKED_UP", "DELIVERED", "PAYMENT_PENDING", "PAYMENT_COLLECTED", "COMPLETED"].includes(order.status)) {
+      throw new BadRequestException("Delivery proof can be submitted after pickup");
+    }
+    if (!dto.proof_url && !dto.note) {
+      throw new BadRequestException("Delivery proof requires a proof URL or note");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const proof = await tx.deliveryProof.create({
+        data: {
+          orderId,
+          riderId: rider.id,
+          proofUrl: dto.proof_url,
+          note: dto.note,
+          status: "SUBMITTED"
+        }
+      });
+
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.delivery_proof_submitted",
+        entityType: "delivery_proof",
+        entityId: proof.id,
+        reason: "Rider submitted delivery proof",
+        metadata: { riderId: rider.id, orderId, status: proof.status }
+      });
+
+      return proof;
     });
   }
 
@@ -226,5 +503,28 @@ export class RidersService {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     return date;
+  }
+
+  private auditRiderAction(
+    tx: Prisma.TransactionClient,
+    input: {
+      actorId: string;
+      action: string;
+      entityType: string;
+      entityId: string;
+      reason: string;
+      metadata?: Record<string, unknown>;
+    }
+  ) {
+    return tx.auditLog.create({
+      data: {
+        actorId: input.actorId,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        reason: input.reason,
+        metadata: input.metadata as Prisma.InputJsonValue | undefined
+      }
+    });
   }
 }

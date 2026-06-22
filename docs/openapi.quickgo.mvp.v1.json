@@ -406,6 +406,23 @@
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/rider/profile": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "Get rider profile",
+        "operationId": "riderProfile",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "patch": {
+        "tags": ["Rider Mode"],
+        "summary": "Update rider profile",
+        "operationId": "riderProfileUpdate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/UpdateRiderProfile" },
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/rider/online-status": {
       "patch": {
         "tags": ["Rider Mode"],
@@ -416,11 +433,37 @@
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/rider/kyc-documents": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "List current rider KYC documents",
+        "operationId": "riderKycDocuments",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Submit current rider KYC document reference",
+        "operationId": "riderKycDocumentCreate",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/RiderKycDocument" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/rider/orders": {
       "get": {
         "tags": ["Rider Mode"],
         "summary": "List assigned rider orders",
         "operationId": "riderOrders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/order-history": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "List current rider order history",
+        "operationId": "riderOrderHistory",
         "security": [{ "bearerAuth": [] }],
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
@@ -433,6 +476,33 @@
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}/accept": {
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Accept assigned rider order",
+        "operationId": "riderOrderAccept",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}/reject": {
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Reject assigned rider order with reason",
+        "operationId": "riderOrderReject",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/ReasonRequired" },
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
       }
     },
     "/rider/orders/{orderId}/picked-up": {
@@ -455,6 +525,28 @@
           { "$ref": "#/components/parameters/OrderId" },
           { "$ref": "#/components/parameters/IdempotencyKey" }
         ],
+        "responses": { "201": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/rider/orders/{orderId}/delivery-proof": {
+      "get": {
+        "tags": ["Rider Mode"],
+        "summary": "List proof-of-delivery submissions for assigned order",
+        "operationId": "riderDeliveryProofs",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      },
+      "post": {
+        "tags": ["Rider Mode"],
+        "summary": "Submit proof of delivery for assigned order",
+        "operationId": "riderDeliveryProofCreate",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/OrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/DeliveryProof" },
         "responses": { "201": { "$ref": "#/components/responses/Success" } }
       }
     },
@@ -578,6 +670,15 @@
         "tags": ["Admin"],
         "summary": "List open payment reconciliation alerts",
         "operationId": "adminReconciliationAlerts",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
+    "/admin/rider-operations": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List recent rider assignment, delivery, and proof activity",
+        "operationId": "adminRiderOperations",
         "security": [{ "bearerAuth": [] }],
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
@@ -1153,6 +1254,18 @@
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RiderOnlineStatus" } } }
       },
+      "UpdateRiderProfile": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateRiderProfile" } } }
+      },
+      "RiderKycDocument": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RiderKycDocument" } } }
+      },
+      "DeliveryProof": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeliveryProof" } } }
+      },
       "PaymentCollected": {
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentCollected" } } }
@@ -1351,6 +1464,29 @@
         "type": "object",
         "required": ["is_online"],
         "properties": { "is_online": { "type": "boolean" } }
+      },
+      "UpdateRiderProfile": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "vehicle_type": { "type": "string" },
+          "vehicle_number": { "type": "string" }
+        }
+      },
+      "RiderKycDocument": {
+        "type": "object",
+        "required": ["type", "document_url"],
+        "properties": {
+          "type": { "type": "string" },
+          "document_url": { "type": "string" }
+        }
+      },
+      "DeliveryProof": {
+        "type": "object",
+        "properties": {
+          "proof_url": { "type": "string" },
+          "note": { "type": "string" }
+        }
       },
       "PaymentCollected": {
         "type": "object",

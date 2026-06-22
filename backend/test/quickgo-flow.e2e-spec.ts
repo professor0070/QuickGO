@@ -208,6 +208,231 @@ describe("QuickGO MVP backend flow (e2e)", () => {
     expect(notifications.body.data.every((item: any) => item.deliveryAttempts === 1)).toBe(true);
   });
 
+  it("supports Phase 8 rider mode profile, KYC, accept/reject, proof, history, and admin visibility", async () => {
+    const adminToken = await login("9999999999");
+    const setup = await createOperationalSetup(adminToken, "9520000001", "9520000002");
+    const secondRider = await request(app.getHttpServer())
+      .post("/api/v1/admin/riders")
+      .set("Authorization", bearer(adminToken))
+      .send({
+        name: "Backup Rider",
+        phone: "9520000003",
+        service_zone_id: serviceZoneId
+      })
+      .expect(201);
+    const secondRiderToken = await login("9520000003");
+
+    const profile = await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(200);
+    expect(profile.body.data).toMatchObject({
+      id: setup.riderId,
+      phone: "9520000002"
+    });
+
+    const updatedProfile = await request(app.getHttpServer())
+      .patch("/api/v1/rider/profile")
+      .set("Authorization", bearer(setup.riderToken))
+      .send({
+        name: "Phase 8 Rider",
+        vehicle_type: "BIKE",
+        vehicle_number: "BR01QG0001"
+      })
+      .expect(200);
+    expect(updatedProfile.body.data).toMatchObject({
+      name: "Phase 8 Rider",
+      vehicleType: "BIKE",
+      vehicleNumber: "BR01QG0001"
+    });
+
+    const riderKyc = await request(app.getHttpServer())
+      .post("/api/v1/rider/kyc-documents")
+      .set("Authorization", bearer(setup.riderToken))
+      .send({
+        type: "DRIVING_LICENSE",
+        document_url: "https://cloudinary.example/rider-license.pdf"
+      })
+      .expect(201);
+    expect(riderKyc.body.data).toMatchObject({
+      riderId: setup.riderId,
+      type: "DRIVING_LICENSE",
+      status: "PENDING"
+    });
+
+    const listedKyc = await request(app.getHttpServer())
+      .get("/api/v1/rider/kyc-documents")
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(200);
+    expect(listedKyc.body.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: riderKyc.body.data.id })])
+    );
+
+    const customerToken = await login("9520000004");
+    const order = await placeOrder(customerToken, setup.productId, "COD", "phase8-create");
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/accept`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .set("Idempotency-Key", nextKey("phase8-vendor-accept"))
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/preparing`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/ready`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/orders/${order.id}/assign-rider`)
+      .set("Authorization", bearer(adminToken))
+      .set("Idempotency-Key", nextKey("phase8-assign"))
+      .send({ rider_id: setup.riderId, reason: "Phase 8 rider mode dispatch" })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/rider/orders/${order.id}`)
+      .set("Authorization", bearer(secondRiderToken))
+      .expect(404);
+
+    const accepted = await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/accept`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("phase8-rider-accept"))
+      .expect(201);
+    expect(accepted.body.data.deliveryAssignments[0].acceptedAt).toBeTruthy();
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/delivery-proof`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("phase8-proof-before-pickup"))
+      .send({ note: "Proof cannot be submitted before pickup" })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/picked-up`)
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(201);
+
+    const proof = await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/delivery-proof`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("phase8-proof"))
+      .send({
+        proof_url: "https://cloudinary.example/delivery-proof.jpg",
+        note: "Customer received package"
+      })
+      .expect(201);
+    expect(proof.body.data).toMatchObject({
+      orderId: order.id,
+      riderId: setup.riderId,
+      status: "SUBMITTED"
+    });
+
+    const proofStatus = await request(app.getHttpServer())
+      .get(`/api/v1/rider/orders/${order.id}/delivery-proof`)
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(200);
+    expect(proofStatus.body.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: proof.body.data.id })])
+    );
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/delivered`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("phase8-delivered"))
+      .expect(201);
+
+    const riderHistory = await request(app.getHttpServer())
+      .get("/api/v1/rider/order-history")
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(200);
+    expect(riderHistory.body.data.map((item: any) => item.id)).toContain(order.id);
+
+    const operations = await request(app.getHttpServer())
+      .get("/api/v1/admin/rider-operations")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(operations.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          riderId: setup.riderId,
+          order: expect.objectContaining({
+            id: order.id,
+            deliveryProofs: expect.arrayContaining([
+              expect.objectContaining({ id: proof.body.data.id })
+            ])
+          })
+        })
+      ])
+    );
+
+    const rejectedOrder = await placeOrder(customerToken, setup.productId, "COD", "phase8-reject-create");
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${rejectedOrder.id}/accept`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .set("Idempotency-Key", nextKey("phase8-reject-vendor-accept"))
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${rejectedOrder.id}/preparing`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${rejectedOrder.id}/ready`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/orders/${rejectedOrder.id}/assign-rider`)
+      .set("Authorization", bearer(adminToken))
+      .set("Idempotency-Key", nextKey("phase8-reject-assign"))
+      .send({ rider_id: secondRider.body.data.id, reason: "Assign backup rider for rejection test" })
+      .expect(201);
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${rejectedOrder.id}/reject`)
+      .set("Authorization", bearer(secondRiderToken))
+      .set("Idempotency-Key", nextKey("phase8-rider-reject"))
+      .send({ reason: "Bike puncture" })
+      .expect(201);
+    expect(rejected.body.data).toMatchObject({
+      status: "RIDER_FAILED",
+      riderId: null
+    });
+
+    await prisma.order.update({
+      where: { id: rejectedOrder.id },
+      data: { assignedAt: new Date(Date.now() - 15 * 60 * 1000) }
+    });
+
+    const queue = await request(app.getHttpServer())
+      .get("/api/v1/admin/attention-queue")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(queue.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "RIDER_REASSIGNMENT_DELAY",
+          order_id: rejectedOrder.id,
+          status: "RIDER_FAILED"
+        })
+      ])
+    );
+
+    const audit = await request(app.getHttpServer())
+      .get("/api/v1/admin/audit-logs")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(audit.body.data.map((item: any) => item.action)).toEqual(
+      expect.arrayContaining([
+        "rider.profile_updated",
+        "rider.kyc_document_submitted",
+        "rider.order_accepted",
+        "rider.delivery_proof_submitted",
+        "rider.order_rejected"
+      ])
+    );
+  });
+
   it("surfaces stale manual operations in the admin attention queue and resolves SLA breaches", async () => {
     const adminToken = await login("9999999999");
     const setup = await createOperationalSetup(adminToken, "9550000001", "9550000002");

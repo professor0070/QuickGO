@@ -23,6 +23,7 @@ type TableName =
   | "paymentReconciliationEvents"
   | "paymentReconciliationAlerts"
   | "deliveryAssignments"
+  | "deliveryProofs"
   | "supportTickets"
   | "supportTicketEvents"
   | "notifications"
@@ -75,6 +76,7 @@ export class InMemoryPrismaService {
   paymentReconciliationEvent: any;
   paymentReconciliationAlert: any;
   deliveryAssignment: any;
+  deliveryProof: any;
   supportTicket: any;
   notification: any;
   auditLog: any;
@@ -119,6 +121,7 @@ export class InMemoryPrismaService {
       paymentReconciliationEvents: [],
       paymentReconciliationAlerts: [],
       deliveryAssignments: [],
+      deliveryProofs: [],
       supportTickets: [],
       supportTicketEvents: [],
       notifications: [],
@@ -244,6 +247,14 @@ export class InMemoryPrismaService {
         }
         const hydrated = include?.roles ? this.withUserRoles(user) : user;
         return select ? this.selectFields(hydrated, select) : hydrated;
+      },
+      update: async ({ where, data }: any) => {
+        const user = this.store.users.find((item) => item.id === where.id || item.phone === where.phone);
+        if (!user) {
+          throw new Error("User not found");
+        }
+        Object.assign(user, data, { updatedAt: new Date() });
+        return user;
       }
     };
 
@@ -932,6 +943,9 @@ export class InMemoryPrismaService {
         const assignment = {
           id: this.id("assignment"),
           assignedAt: new Date(),
+          acceptedAt: null,
+          rejectedAt: null,
+          rejectionReason: null,
           pickedAt: null,
           deliveredAt: null,
           isActive: true,
@@ -940,11 +954,39 @@ export class InMemoryPrismaService {
         this.store.deliveryAssignments.push(assignment);
         return assignment;
       },
+      findMany: async ({ where, orderBy, take, include }: any = {}) =>
+        this.sort(
+          this.store.deliveryAssignments.filter((item) => this.matches(item, where)),
+          orderBy
+        )
+          .slice(0, take ?? Number.POSITIVE_INFINITY)
+          .map((item) => this.hydrateDeliveryAssignment(item, include)),
       updateMany: async ({ where, data }: any) => {
         const rows = this.store.deliveryAssignments.filter((item) => this.matches(item, where));
         rows.forEach((item) => Object.assign(item, data));
         return { count: rows.length };
       }
+    };
+
+    this.deliveryProof = {
+      create: async ({ data }: any) => {
+        const proof = {
+          id: this.id("deliveryProof"),
+          proofUrl: null,
+          note: null,
+          status: "SUBMITTED",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data
+        };
+        this.store.deliveryProofs.push(proof);
+        return proof;
+      },
+      findMany: async ({ where, orderBy }: any = {}) =>
+        this.sort(
+          this.store.deliveryProofs.filter((item) => this.matches(item, where)),
+          orderBy
+        )
     };
 
     this.supportTicket = {
@@ -1237,6 +1279,11 @@ export class InMemoryPrismaService {
               (document) => document.riderId === rider.id
             )
           }
+        : {}),
+      ...(include?.deliveryProofs
+        ? {
+            deliveryProofs: this.store.deliveryProofs.filter((proof) => proof.riderId === rider.id)
+          }
         : {})
     };
   }
@@ -1303,6 +1350,12 @@ export class InMemoryPrismaService {
     if (include?.deliveryAssignments) {
       hydrated.deliveryAssignments = this.store.deliveryAssignments.filter((item) => item.orderId === order.id);
     }
+    if (include?.deliveryProofs) {
+      hydrated.deliveryProofs = this.sort(
+        this.store.deliveryProofs.filter((item) => item.orderId === order.id),
+        include.deliveryProofs.orderBy
+      );
+    }
     if (include?.supportTickets) {
       hydrated.supportTickets = this.store.supportTickets.filter((item) => item.orderId === order.id);
     }
@@ -1324,6 +1377,19 @@ export class InMemoryPrismaService {
     if (include?.customer) {
       const customer = this.store.customers.find((item) => item.id === order.customerId);
       hydrated.customer = this.hydrateCustomer(customer!, include.customer.include);
+    }
+    return hydrated;
+  }
+
+  private hydrateDeliveryAssignment(assignment: Record<string, any>, include: any) {
+    const hydrated = { ...assignment };
+    if (include?.rider) {
+      const rider = this.store.riders.find((item) => item.id === assignment.riderId);
+      hydrated.rider = include.rider.select ? this.selectFields(rider, include.rider.select) : rider;
+    }
+    if (include?.order) {
+      const order = this.store.orders.find((item) => item.id === assignment.orderId);
+      hydrated.order = order ? this.hydrateOrder(order, include.order.include) : null;
     }
     return hydrated;
   }

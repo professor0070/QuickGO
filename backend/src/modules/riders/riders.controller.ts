@@ -7,7 +7,14 @@ import { Idempotent } from "../../common/idempotency/idempotent.decorator";
 import { DomainEventBus } from "../internal-events/domain-event-bus.service";
 import { CreateSupportTicketDto } from "../support/support.dto";
 import { SupportService } from "../support/support.service";
-import { MarkPaymentCollectedDto, ToggleRiderOnlineDto } from "./rider.dto";
+import {
+  CreateRiderKycDocumentDto,
+  MarkPaymentCollectedDto,
+  RejectAssignedOrderDto,
+  SubmitDeliveryProofDto,
+  ToggleRiderOnlineDto,
+  UpdateRiderProfileDto
+} from "./rider.dto";
 import { RidersService } from "./riders.service";
 
 @Controller("rider")
@@ -24,6 +31,19 @@ export class RidersController {
     return this.ridersService.dashboard(user.id);
   }
 
+  @Get("profile")
+  profile(@CurrentUser() user: RequestUser) {
+    return this.ridersService.profile(user.id);
+  }
+
+  @Patch("profile")
+  async updateProfile(@CurrentUser() user: RequestUser, @Body() body: UpdateRiderProfileDto) {
+    return {
+      data: await this.ridersService.updateProfile(user.id, body),
+      message: "Rider profile updated"
+    };
+  }
+
   @Patch("online-status")
   async toggleOnline(@CurrentUser() user: RequestUser, @Body() body: ToggleRiderOnlineDto) {
     return {
@@ -32,14 +52,60 @@ export class RidersController {
     };
   }
 
+  @Get("kyc-documents")
+  kycDocuments(@CurrentUser() user: RequestUser) {
+    return this.ridersService.kycDocuments(user.id);
+  }
+
+  @Post("kyc-documents")
+  async createKycDocument(
+    @CurrentUser() user: RequestUser,
+    @Body() body: CreateRiderKycDocumentDto
+  ) {
+    return {
+      data: await this.ridersService.createKycDocument(user.id, body),
+      message: "Rider KYC document submitted"
+    };
+  }
+
   @Get("orders")
   assignedOrders(@CurrentUser() user: RequestUser) {
     return this.ridersService.assignedOrders(user.id);
   }
 
+  @Get("order-history")
+  orderHistory(@CurrentUser() user: RequestUser) {
+    return this.ridersService.orderHistory(user.id);
+  }
+
   @Get("orders/:orderId")
   assignedOrderDetail(@CurrentUser() user: RequestUser, @Param("orderId") orderId: string) {
     return this.ridersService.assignedOrderDetail(user.id, orderId);
+  }
+
+  @Idempotent("RIDER_ACCEPT_ORDER")
+  @Post("orders/:orderId/accept")
+  async acceptAssignedOrder(
+    @CurrentUser() user: RequestUser,
+    @Param("orderId") orderId: string
+  ) {
+    return {
+      data: await this.ridersService.acceptAssignedOrder(user.id, orderId),
+      message: "Assigned order accepted"
+    };
+  }
+
+  @Idempotent("RIDER_REJECT_ORDER")
+  @Post("orders/:orderId/reject")
+  async rejectAssignedOrder(
+    @CurrentUser() user: RequestUser,
+    @Param("orderId") orderId: string,
+    @Body() body: RejectAssignedOrderDto
+  ) {
+    return {
+      data: await this.ridersService.rejectAssignedOrder(user.id, orderId, body),
+      message: "Assigned order rejected"
+    };
   }
 
   @Post("orders/:orderId/picked-up")
@@ -55,6 +121,24 @@ export class RidersController {
       eventMetadata("riders.controller", request)
     );
     return order;
+  }
+
+  @Get("orders/:orderId/delivery-proof")
+  deliveryProofs(@CurrentUser() user: RequestUser, @Param("orderId") orderId: string) {
+    return this.ridersService.deliveryProofsForOrder(user.id, orderId);
+  }
+
+  @Idempotent("SUBMIT_DELIVERY_PROOF")
+  @Post("orders/:orderId/delivery-proof")
+  async submitDeliveryProof(
+    @CurrentUser() user: RequestUser,
+    @Param("orderId") orderId: string,
+    @Body() body: SubmitDeliveryProofDto
+  ) {
+    return {
+      data: await this.ridersService.submitDeliveryProof(user.id, orderId, body),
+      message: "Delivery proof submitted"
+    };
   }
 
   @Idempotent("MARK_DELIVERED")

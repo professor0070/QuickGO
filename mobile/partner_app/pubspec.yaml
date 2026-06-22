@@ -10,6 +10,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   dio: ^5.7.0
   firebase_messaging: ^15.1.6
+  url_launcher: ^6.3.1
   quickgo_shared_api:
     path: ../packages/shared_api
   quickgo_shared_auth:
@@ -26,4 +27,3 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 flutter:
   uses-material-design: true
-

@@ -49,10 +49,17 @@ Phase 7 began after the Phase 6 locked baseline. The first backend-only slice ad
 - Added persistent payment reconciliation alert records for collection-pending, amount-mismatch, and dispute follow-up.
 - Added `GET /admin/reconciliation-alerts` to expose open reconciliation alerts to founder/admin operations without changing payment collection semantics.
 - Reviewed and hardened the existing upload module for product images, vendor compliance documents, and rider KYC documents with content-signature validation, protected document storage mode, audit logs, and OpenAPI coverage.
+- Locked the non-mock SMS OTP provider path to fail closed until a real SMS vendor/provider adapter is approved and configured.
+
+## Phase 7 Lock
+
+Phase 7 lock readiness was audited on 2026-06-22 and approved. The formal report is recorded in `docs/PHASE_7_LOCK_AUDIT_REPORT.md`.
+
+Phase 7 is locked for the controlled MVP baseline. Remaining items are external launch dependencies or later release setup, not Phase 7 code blockers. Phase 8 may be planned after this baseline, but Phase 8 code changes must wait for explicit confirmation.
 
 ## Remaining Product Work
 
-- Continue replacing remaining event-handler log boundaries with production persistence where needed, especially mobile crash/error integrations.
 - Add production SMS provider behind the OTP adapter when vendor/legal/provider choice is finalized.
-- Generate Flutter platform folders once Flutter SDK is installed.
-- Install dependencies and run full backend/admin/mobile test suites.
+- Add Sentry/Firebase Crashlytics wiring during release setup once project ownership and credentials are finalized.
+- Flutter Android/iOS platform folders exist locally but remain ignored/generated artifacts in this repository; Android release packaging should generate/verify them in release workstations or CI.
+- Install dependencies and run full backend/admin/mobile test suites during each lock audit.

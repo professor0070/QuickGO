@@ -7,6 +7,7 @@ coverage/
 .flutter-plugins
 .flutter-plugins-dependencies
 android/
+!mobile/partner_app/android/gradle.properties
 ios/
 linux/
 macos/

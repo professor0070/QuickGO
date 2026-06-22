@@ -107,18 +107,16 @@ New admin API:
 | Admin production build | PASS |
 | Partner App `flutter analyze` | PASS |
 | Partner App `flutter test` | PASS |
-| Partner App Android debug build | FAIL, release-blocking Android packaging caveat |
+| Partner App Android debug build | PASS (debug APK produced after repository build-config fix `mobile/partner_app/android/gradle.properties` at commit `f5dff7a`) |
 | Production high/critical npm audit | PASS |
 
-Android build caveat:
+Android packaging status:
 
-`flutter build apk --debug` fails in `:url_launcher_android:compileDebugKotlin` because Kotlin incremental cache handling sees source/cache paths across `C:` and `D:` drives. The failure is in Android packaging for the URL launcher plugin, not in Dart analysis or widget tests. No APK artifact was produced. This is a production Android release blocker.
+The earlier debug APK failure for `:url_launcher_android:compileDebugKotlin` was reproduced and a minimal repository-based mitigation was applied. The repository now tracks `mobile/partner_app/android/gradle.properties` with `kotlin.incremental=false` (commit `f5dff7a`), which disables Kotlin incremental compilation and avoids the cross-drive incremental-cache path error on Windows. After applying the change, `flutter build apk --debug` produces a valid debug APK and Partner App static checks and tests remain green.
 
-Recommended remediation before release APK packaging:
+Recommended CI/release guidance:
 
-- Build from a workspace and Pub cache on the same Windows drive, or
-- Configure the Android build to avoid Kotlin incremental cache path relocation for plugin compilation, or
-- Pin/replace the URL-launcher Android implementation after verifying a compatible version in CI.
+- Keep the committed `kotlin.incremental=false` in the Partner App `gradle.properties` for reproducible CI builds, or configure CI to colocate Pub/Gradle caches on the same drive as the workspace if incremental compilation is required.
 
 ## Phase 8 Completion
 

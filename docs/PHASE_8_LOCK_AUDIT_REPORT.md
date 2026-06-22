@@ -6,7 +6,7 @@ Baseline before phase: `b30d8c3 chore: lock phase 7 readiness`
 
 ## Lock Verdict
 
-PHASE 8 FUNCTIONAL LOCK WITH RELEASE-BLOCKING ANDROID PACKAGING CAVEAT
+PHASE 8 FUNCTIONAL LOCK — ANDROID PACKAGING FIX APPLIED (REPRODUCIBLE)
 
 Phase 8 rider-mode functionality is implemented, tested, documented, and aligned with the locked MVP scope. Phase 8 is functionally lock-ready, but production Android distribution is blocked until Partner App APK packaging is fixed.
 
@@ -112,42 +112,35 @@ Production dependency security:
 | `flutter pub get` in `mobile/partner_app` | PASS |
 | `flutter analyze` in `mobile/partner_app` | PASS |
 | `flutter test` in `mobile/partner_app` | PASS |
-| `flutter build apk --debug` in `mobile/partner_app` | FAIL: release-blocking Android packaging issue |
+| `flutter build apk --debug` in `mobile/partner_app` | PASS (debug APK produced after repository build-config fix `mobile/partner_app/android/gradle.properties` at commit `f5dff7a`) |
 | `npm audit --omit=dev --audit-level=high` | PASS |
 | Migration destructive-SQL scan | PASS |
 
-## Android Packaging Caveat
+## Packaging status and mitigation
 
-Classification: RELEASE BLOCKER for production Android distribution. FUNCTIONAL CAVEAT for Phase 8 source/backend/admin lock.
+Packaging status: The Android debug APK issue was reproduced and a safe, minimal repository-based build-config fix was applied and committed (commit `f5dff7a`). The fix disables Kotlin incremental compilation for the Partner App Android build to avoid cross-drive incremental-cache path errors on Windows.
 
-Partner App Android debug build fails at:
+Observed root cause (reproduced):
 
-`:url_launcher_android:compileDebugKotlin`
+- Kotlin incremental compiler cache handling fails on Windows when plugin sources are under the Pub cache on `C:\Users\<user>\AppData\Local\Pub\Cache` while the Flutter project is on a different drive (e.g., `D:\QuickGO`). The Kotlin incremental storage attempts to relativize paths across different drive roots and fails with `this and base files have different roots` during `:url_launcher_android:compileDebugKotlin`.
 
-Observed root cause:
+Mitigation applied:
 
-Kotlin incremental compiler cache handling fails on Windows because plugin source paths are under the Pub cache on `C:\Users\pandi\AppData\Local\Pub\Cache` while the project is under `D:\QuickGO`. The compiler reports cross-root path/cached-storage failures while compiling `url_launcher_android`.
+- Repository change: `mobile/partner_app/android/gradle.properties` now contains `kotlin.incremental=false` and is tracked in the repo at commit `f5dff7a`. This is a non-invasive, reversible build-config change that disables Kotlin incremental compilation for plugin compilation and allows the build to complete successfully on Windows cross-drive setups.
+- Local verification: `flutter build apk --debug` produced `build/app/outputs/flutter-apk/app-debug.apk` after the change and `flutter analyze` / `flutter test` remain green.
 
-Fresh reproduction during the final Phase 7/8 gate:
+Recommended CI / release guidance:
 
-- Command: `flutter build apk --debug`
-- Result: FAIL
-- Failing task: `:url_launcher_android:compileDebugKotlin`
-- Key error: `this and base files have different roots`
-- APK artifact: not produced
+- For release builds and CI, prefer one of the following reproducible approaches:
+	- Keep the committed `kotlin.incremental=false` in `mobile/partner_app/android/gradle.properties` (already applied) so CI builds do not rely on same-drive cache layout; or
+	- Configure CI to place Pub and Gradle caches on the same drive as the workspace (preferred if incremental builds are desired); or
+	- If incremental compilation is required in the future, investigate Kotlin/Gradle plugin flags to relocate incremental caches to a stable project-relative path in CI.
 
 Impact:
 
-- Partner App Dart source is valid.
-- Partner App widget tests pass.
-- Backend/admin Phase 8 behavior is validated.
-- APK artifact was not produced in this environment.
-
-Required before release distribution:
-
-- Run Android packaging in a same-drive workspace/cache setup, or
-- Commit/CI-apply a Kotlin cache-safe Android Gradle configuration, or
-- Verify an alternate URL launcher package/version in CI.
+- Partner App Dart source and widget tests remain valid.
+- Backend/admin Phase 8 behavior is validated and unchanged.
+- The debug APK is now producible in this repository environment; release artifact signing and Play Store submission remain CI/workstation steps outside this repo.
 
 ## Risk Assessment
 

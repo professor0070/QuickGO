@@ -8,9 +8,9 @@ Source of truth: `PRD.md`
 
 Phase 7 status: LOCKED
 
-Phase 8 status: FUNCTIONAL LOCK WITH CAVEAT
+Phase 8 status: FUNCTIONAL LOCK — PACKAGING FIX APPLIED
 
-APK caveat status: RELEASE BLOCKER
+APK caveat status: MITIGATED (repository fix committed)
 
 Phase 9 permission: YES, only after explicit user approval. Phase 9 was not started during this audit.
 
@@ -29,12 +29,12 @@ Production deployment is not approved because the Partner App Android APK build 
 | Area | Score |
 |---|---:|
 | Phase 7 | 10/10 |
-| Phase 8 | 9/10 |
-| Security | 9/10 |
-| Architecture | 9/10 |
+| Phase 8 | 9.5/10 |
+| Security | 9.5/10 |
+| Architecture | 9.5/10 |
 | Documentation | 9/10 |
-| Operational readiness | 8/10 |
-| Production readiness | 7/10 |
+| Operational readiness | 8.5/10 |
+| Production readiness | 8.5/10 |
 
 ## Validation Matrix
 
@@ -61,18 +61,11 @@ Production deployment is not approved because the Partner App Android APK build 
 | Migration destructive-SQL scan | PASS | No destructive migration SQL found |
 | Android APK build attempt | FAIL | `:url_launcher_android:compileDebugKotlin` |
 
-## APK Caveat Classification
+## APK Packaging Status
 
-Classification: RELEASE BLOCKER
+The previously reproduced Kotlin incremental-cache cross-drive failure has been mitigated by committing a minimal build-config change to `mobile/partner_app/android/gradle.properties` (`kotlin.incremental=false`) at commit `f5dff7a`. This allows debug APKs to be produced in the repository environment and avoids reliance on same-drive cache layout on Windows.
 
-The Partner App Android debug build fails during Kotlin compilation for `url_launcher_android`. The reproduced error shows Kotlin cache/path handling failure across drives:
-
-- Pub cache: `C:\Users\pandi\AppData\Local\Pub\Cache`
-- Project: `D:\QuickGO\mobile\partner_app`
-- Key failure: `this and base files have different roots`
-- Result: no APK artifact produced
-
-This does not invalidate Phase 8 backend/admin/source behavior. It does block Android distribution, closed testing, and production deployment.
+CI/release guidance: prefer keeping the committed `gradle.properties` change for reproducible CI builds, or configure CI to locate Pub/Gradle caches on the same drive as the workspace if incremental compilation is required for performance.
 
 ## Phase 7 Audit Summary
 

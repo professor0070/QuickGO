@@ -107,12 +107,12 @@ New admin API:
 | Admin production build | PASS |
 | Partner App `flutter analyze` | PASS |
 | Partner App `flutter test` | PASS |
-| Partner App Android debug build | FAIL, environment/tooling caveat |
+| Partner App Android debug build | FAIL, release-blocking Android packaging caveat |
 | Production high/critical npm audit | PASS |
 
 Android build caveat:
 
-`flutter build apk --debug` fails in `:url_launcher_android:compileDebugKotlin` because Kotlin incremental cache handling sees source/cache paths across `C:` and `D:` drives. The failure is in Android packaging for the URL launcher plugin, not in Dart analysis or widget tests. No APK artifact was produced.
+`flutter build apk --debug` fails in `:url_launcher_android:compileDebugKotlin` because Kotlin incremental cache handling sees source/cache paths across `C:` and `D:` drives. The failure is in Android packaging for the URL launcher plugin, not in Dart analysis or widget tests. No APK artifact was produced. This is a production Android release blocker.
 
 Recommended remediation before release APK packaging:
 
@@ -124,6 +124,6 @@ Recommended remediation before release APK packaging:
 
 Functional completion: 100%
 
-Release packaging readiness: 95%, pending Android APK build remediation.
+Release packaging readiness: 90%, pending Android APK build remediation.
 
-Phase 9 readiness: Phase 9 may be planned after explicit user approval, but Android release packaging should be fixed before production distribution.
+Phase 9 readiness: Phase 9 may be planned or started after explicit user approval, but Android release packaging must be fixed before production distribution or closed testing.

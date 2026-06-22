@@ -75,13 +75,26 @@ Implemented Phase 8 work:
 - Added backend e2e coverage for assigned-only rider access, KYC, accept/reject, delivery proof, history, admin operations visibility, and audit logs.
 - Added Partner App call/map buttons using Android URL intents; no live tracking, auto-dispatch, route optimization, rider wallet, payout expansion, gamification, referral, or Phase 9 work was added.
 
-Phase 8 validation passed for Prisma validate/generate, backend lint/build/unit/e2e, admin lint/test/type/build, Partner App analyze/test, root checks, and production high/critical audit. Partner App Android debug APK build timed out in Gradle without producing an APK artifact; this is documented in the Phase 8 reports as a release-packaging environment caveat, not a source/analyze/test failure.
+Phase 8 validation passed for Prisma validate/generate, backend lint/build/unit/e2e, admin lint/test/type/build, Customer App analyze/test, Partner App analyze/test, root checks, OpenAPI validation, migration sanity checks, and production high/critical audit. Partner App Android debug APK build fails at `:url_launcher_android:compileDebugKotlin` due to Kotlin cache/path handling between the `C:` Pub cache and `D:` project workspace. This is classified as a production Android release blocker and a Phase 8 functional lock caveat, not a backend/admin/source-test failure.
 
 The completion report is recorded in `docs/PHASE_8_COMPLETION_REPORT.md`. The lock audit report is recorded in `docs/PHASE_8_LOCK_AUDIT_REPORT.md`.
+
+## Phase 7 + Phase 8 Final Readiness Gate
+
+The final Phase 7 + Phase 8 readiness gate was performed on 2026-06-22. The production readiness report is recorded in `docs/PRODUCTION_READINESS_REPORT.md`.
+
+Gate decisions:
+
+- Phase 7 status: locked.
+- Phase 8 status: functional lock with caveat.
+- APK caveat status: production Android release blocker.
+- Phase 9 readiness: may proceed only after explicit user approval; Phase 9 was not started during this audit.
+- Production deployment readiness: not approved until Android APK packaging and external launch dependencies are resolved.
 
 ## Remaining Product Work
 
 - Add production SMS provider behind the OTP adapter when vendor/legal/provider choice is finalized.
 - Add Sentry/Firebase Crashlytics wiring during release setup once project ownership and credentials are finalized.
+- Fix Partner App Android APK packaging for `url_launcher_android` Kotlin compile/cache path failure before production distribution or closed testing.
 - Flutter Android/iOS platform folders exist locally but remain ignored/generated artifacts in this repository; Android release packaging should generate/verify them in release workstations or CI.
 - Install dependencies and run full backend/admin/mobile test suites during each lock audit.

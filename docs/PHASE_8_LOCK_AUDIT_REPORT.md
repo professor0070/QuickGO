@@ -6,9 +6,9 @@ Baseline before phase: `b30d8c3 chore: lock phase 7 readiness`
 
 ## Lock Verdict
 
-PHASE 8 FUNCTIONAL LOCK READY WITH ANDROID PACKAGING CAVEAT
+PHASE 8 FUNCTIONAL LOCK WITH RELEASE-BLOCKING ANDROID PACKAGING CAVEAT
 
-Phase 8 rider-mode functionality is implemented, tested, documented, and aligned with the locked MVP scope. The only remaining caveat is Android APK packaging for the Partner App on this Windows environment after adding URL-launcher support for call/map actions.
+Phase 8 rider-mode functionality is implemented, tested, documented, and aligned with the locked MVP scope. Phase 8 is functionally lock-ready, but production Android distribution is blocked until Partner App APK packaging is fixed.
 
 ## PRD Alignment
 
@@ -97,12 +97,13 @@ Production dependency security:
 
 | Command | Result |
 |---|---|
+| `git status --short` | PASS, clean before validation |
 | `npx prisma validate --schema backend/prisma/schema.prisma` | PASS |
 | `npm --workspace backend run prisma:generate` | PASS |
 | `npm --workspace backend run lint` | PASS |
 | `npm --workspace backend run build` | PASS |
 | `npm --workspace backend run test` | PASS |
-| `npm --workspace backend run test:e2e` | PASS |
+| `npm --workspace backend run test:e2e` | PASS, 2 suites / 13 tests |
 | `npm run check` | PASS |
 | `npm --workspace web/admin_panel run lint` | PASS |
 | `npm --workspace web/admin_panel run test` | PASS |
@@ -111,10 +112,13 @@ Production dependency security:
 | `flutter pub get` in `mobile/partner_app` | PASS |
 | `flutter analyze` in `mobile/partner_app` | PASS |
 | `flutter test` in `mobile/partner_app` | PASS |
-| `flutter build apk --debug` in `mobile/partner_app` | FAIL: Android packaging caveat |
+| `flutter build apk --debug` in `mobile/partner_app` | FAIL: release-blocking Android packaging issue |
 | `npm audit --omit=dev --audit-level=high` | PASS |
+| Migration destructive-SQL scan | PASS |
 
 ## Android Packaging Caveat
+
+Classification: RELEASE BLOCKER for production Android distribution. FUNCTIONAL CAVEAT for Phase 8 source/backend/admin lock.
 
 Partner App Android debug build fails at:
 
@@ -123,6 +127,14 @@ Partner App Android debug build fails at:
 Observed root cause:
 
 Kotlin incremental compiler cache handling fails on Windows because plugin source paths are under the Pub cache on `C:\Users\pandi\AppData\Local\Pub\Cache` while the project is under `D:\QuickGO`. The compiler reports cross-root path/cached-storage failures while compiling `url_launcher_android`.
+
+Fresh reproduction during the final Phase 7/8 gate:
+
+- Command: `flutter build apk --debug`
+- Result: FAIL
+- Failing task: `:url_launcher_android:compileDebugKotlin`
+- Key error: `this and base files have different roots`
+- APK artifact: not produced
 
 Impact:
 
@@ -159,16 +171,16 @@ Low risks:
 
 PRD functional compliance: 100%
 
-Security posture for implemented scope: 95%
+Security posture for implemented scope: 96%
 
 QA validation score: 92%
 
-Production readiness score: 88%
+Production readiness score: 84%
 
-Phase completion: 100% functional, 95% release-packaging ready
+Phase completion: 100% functional, 90% release-packaging ready
 
 ## Lock Decision
 
 Phase 8 can be functionally locked with the Android packaging caveat documented.
 
-Phase 9 may not start automatically. It may be planned only after explicit user approval, and Android release packaging should be remediated before production distribution.
+Phase 9 may not start automatically. It may be planned or started only after explicit user approval. Android APK packaging is a production release blocker and must be remediated before distribution or closed testing.

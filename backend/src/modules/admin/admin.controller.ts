@@ -41,6 +41,11 @@ export class AdminController {
     return this.admin.dashboard();
   }
 
+  @Get("attention-queue")
+  attentionQueue() {
+    return this.admin.attentionQueue();
+  }
+
   @Get("orders")
   orders() {
     return this.admin.orders();

@@ -2,6 +2,14 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as admin from "firebase-admin";
 
+export type PushDispatchResult = {
+  attemptedTokens: number;
+  successCount: number;
+  failureCount: number;
+  simulated: boolean;
+  error?: string;
+};
+
 @Injectable()
 export class FcmProvider implements OnModuleInit {
   private readonly logger = new Logger(FcmProvider.name);
@@ -38,14 +46,31 @@ export class FcmProvider implements OnModuleInit {
     }
   }
 
-  async sendToDevices(tokens: string[], title: string, body: string, data?: Record<string, string>): Promise<void> {
-    if (tokens.length === 0) return;
+  async sendToDevices(
+    tokens: string[],
+    title: string,
+    body: string,
+    data?: Record<string, unknown>
+  ): Promise<PushDispatchResult> {
+    if (tokens.length === 0) {
+      return {
+        attemptedTokens: 0,
+        successCount: 0,
+        failureCount: 0,
+        simulated: !this.initialized
+      };
+    }
 
     this.logger.log(`[FCM] Sending push notification to ${tokens.length} devices: "${title}" - "${body}"`);
 
     if (!this.initialized) {
       this.logger.log("[FCM] Simulated push notification success (firebase-admin unconfigured).");
-      return;
+      return {
+        attemptedTokens: tokens.length,
+        successCount: tokens.length,
+        failureCount: 0,
+        simulated: true
+      };
     }
 
     try {
@@ -60,12 +85,25 @@ export class FcmProvider implements OnModuleInit {
 
       const response = await admin.messaging().sendEachForMulticast(payload);
       this.logger.log(`[FCM] Successfully sent FCM batch: success=${response.successCount}, failure=${response.failureCount}`);
+      return {
+        attemptedTokens: tokens.length,
+        successCount: response.successCount,
+        failureCount: response.failureCount,
+        simulated: false
+      };
     } catch (error) {
       this.logger.error("[FCM] Error sending multicast message via Firebase Admin", error);
+      return {
+        attemptedTokens: tokens.length,
+        successCount: 0,
+        failureCount: tokens.length,
+        simulated: false,
+        error: error instanceof Error ? error.message : "Unknown FCM dispatch error"
+      };
     }
   }
 
-  private sanitizeData(data: Record<string, any>): Record<string, string> {
+  private sanitizeData(data: Record<string, unknown>): Record<string, string> {
     const sanitized: Record<string, string> = {};
     for (const key of Object.keys(data)) {
       const val = data[key];

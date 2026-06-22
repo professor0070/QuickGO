@@ -567,7 +567,20 @@ Returns:
 - online riders
 - payment pending
 - support open
+- top SLA/attention alerts
 - validation metrics
+
+### 13.1.1 Admin Attention Queue
+
+`GET /admin/attention-queue`
+
+Returns backend-controlled manual-operations alerts for:
+
+- vendor acceptance delay
+- rider assignment delay
+- pickup delay
+
+The queue writes a breached SLA event when an order crosses the MVP operations threshold. It does not assign riders automatically.
 
 ### 13.2 Vendor Management
 
@@ -605,6 +618,7 @@ POST   /admin/riders/:riderId/pause
 ### 13.5 Order Operations
 
 ```txt
+GET    /admin/attention-queue
 GET    /admin/orders
 GET    /admin/orders/:orderId
 POST   /admin/orders/:orderId/assign-rider

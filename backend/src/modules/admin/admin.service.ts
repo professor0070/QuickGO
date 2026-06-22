@@ -52,6 +52,24 @@ const CANCELLATION_STATUSES: OrderStatus[] = [
   "CANCELLED"
 ];
 
+const SLA_THRESHOLDS_MINUTES = {
+  VENDOR_ACCEPTANCE_DELAY: 10,
+  RIDER_ASSIGNMENT_DELAY: 10,
+  PICKUP_DELAY: 20
+} as const;
+
+type AttentionQueueItem = {
+  type: keyof typeof SLA_THRESHOLDS_MINUTES;
+  severity: "HIGH" | "MEDIUM";
+  order_id: string;
+  order_number: string;
+  status: OrderStatus;
+  age_minutes: number;
+  threshold_minutes: number;
+  message: string;
+  vendor?: { id: string; shop_name: string };
+};
+
 @Injectable()
 export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
@@ -98,6 +116,8 @@ export class AdminService {
       })
     ]);
 
+    const alerts = await this.attentionQueue();
+
     return {
       today_orders: todayOrders,
       pending_vendor_acceptance: pendingVendorAcceptance,
@@ -111,8 +131,35 @@ export class AdminService {
       today_rider_payout_estimate: Number(todayEconomics._sum.deliveryFee ?? 0),
       cancellation_count: cancellationCount,
       average_delivery_time_minutes: null,
-      alerts: []
+      alerts: alerts.slice(0, 10)
     };
+  }
+
+  async attentionQueue() {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: {
+          in: ["PLACED", "READY_FOR_PICKUP", "RIDER_ASSIGNED"]
+        }
+      },
+      include: {
+        vendor: { select: { id: true, shopName: true } }
+      },
+      orderBy: { createdAt: "asc" },
+      take: 100
+    });
+
+    const now = new Date();
+    const items: AttentionQueueItem[] = [];
+    for (const order of orders) {
+      const item = this.attentionItemForOrder(order, now);
+      if (item) {
+        items.push(item);
+        await this.ensureSlaBreach(item);
+      }
+    }
+
+    return items.sort((left, right) => right.age_minutes - left.age_minutes);
   }
 
   orders() {
@@ -146,6 +193,112 @@ export class AdminService {
     }
 
     return order;
+  }
+
+  private attentionItemForOrder(
+    order: {
+      id: string;
+      orderNumber: string;
+      status: string;
+      createdAt: Date;
+      readyAt: Date | null;
+      assignedAt: Date | null;
+      vendor?: { id: string; shopName: string } | null;
+    },
+    now: Date
+  ): AttentionQueueItem | undefined {
+    if (order.status === "PLACED") {
+      return this.buildAttentionItem({
+        order,
+        now,
+        type: "VENDOR_ACCEPTANCE_DELAY",
+        since: order.createdAt,
+        message: "Vendor has not accepted or rejected this order yet"
+      });
+    }
+
+    if (order.status === "READY_FOR_PICKUP") {
+      return this.buildAttentionItem({
+        order,
+        now,
+        type: "RIDER_ASSIGNMENT_DELAY",
+        since: order.readyAt ?? order.createdAt,
+        message: "Order is ready but no rider is assigned"
+      });
+    }
+
+    if (order.status === "RIDER_ASSIGNED") {
+      return this.buildAttentionItem({
+        order,
+        now,
+        type: "PICKUP_DELAY",
+        since: order.assignedAt ?? order.createdAt,
+        message: "Assigned rider has not marked pickup yet"
+      });
+    }
+
+    return undefined;
+  }
+
+  private buildAttentionItem(input: {
+    order: {
+      id: string;
+      orderNumber: string;
+      status: string;
+      vendor?: { id: string; shopName: string } | null;
+    };
+    now: Date;
+    type: keyof typeof SLA_THRESHOLDS_MINUTES;
+    since: Date;
+    message: string;
+  }): AttentionQueueItem | undefined {
+    const threshold = SLA_THRESHOLDS_MINUTES[input.type];
+    const ageMinutes = Math.floor((input.now.getTime() - input.since.getTime()) / 60_000);
+    if (ageMinutes < threshold) {
+      return undefined;
+    }
+
+    return {
+      type: input.type,
+      severity: ageMinutes >= threshold * 2 ? "HIGH" : "MEDIUM",
+      order_id: input.order.id,
+      order_number: input.order.orderNumber,
+      status: input.order.status as OrderStatus,
+      age_minutes: ageMinutes,
+      threshold_minutes: threshold,
+      message: input.message,
+      vendor: input.order.vendor
+        ? { id: input.order.vendor.id, shop_name: input.order.vendor.shopName }
+        : undefined
+    };
+  }
+
+  private async ensureSlaBreach(item: AttentionQueueItem) {
+    const existing = await this.prisma.slaEvent.findFirst({
+      where: {
+        orderId: item.order_id,
+        type: item.type,
+        breached: true,
+        resolvedAt: null
+      }
+    });
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.slaEvent.create({
+      data: {
+        orderId: item.order_id,
+        type: item.type,
+        breached: true,
+        metadata: {
+          severity: item.severity,
+          ageMinutes: item.age_minutes,
+          thresholdMinutes: item.threshold_minutes,
+          message: item.message
+        }
+      }
+    });
   }
 
   async assignRider(orderId: string, dto: AssignRiderDto, actorId?: string) {

@@ -184,6 +184,61 @@ describe("QuickGO MVP backend flow (e2e)", () => {
       .set("Authorization", bearer(adminToken))
       .expect(200);
     expect(notifications.body.data.length).toBeGreaterThan(0);
+    expect(notifications.body.data.every((item: any) => item.deliveryStatus === "NO_DEVICE")).toBe(true);
+    expect(notifications.body.data.every((item: any) => item.deliveryAttempts === 1)).toBe(true);
+  });
+
+  it("surfaces stale manual operations in the admin attention queue and resolves SLA breaches", async () => {
+    const adminToken = await login("9999999999");
+    const setup = await createOperationalSetup(adminToken, "9550000001", "9550000002");
+    const customerToken = await login("9550000003");
+    const order = await placeOrder(customerToken, setup.productId, "COD", "sla-create");
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { createdAt: new Date(Date.now() - 15 * 60 * 1000) }
+    });
+
+    const queue = await request(app.getHttpServer())
+      .get("/api/v1/admin/attention-queue")
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+
+    expect(queue.body.data[0]).toMatchObject({
+      type: "VENDOR_ACCEPTANCE_DELAY",
+      order_id: order.id,
+      status: "PLACED"
+    });
+
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders/${order.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(detail.body.data.slaEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "VENDOR_ACCEPTANCE_DELAY",
+          breached: true,
+          resolvedAt: null
+        })
+      ])
+    );
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/accept`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .set("Idempotency-Key", nextKey("sla-accept"))
+      .expect(201);
+    await flushEvents();
+
+    const afterAccept = await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders/${order.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    const breach = afterAccept.body.data.slaEvents.find(
+      (item: any) => item.type === "VENDOR_ACCEPTANCE_DELAY" && item.breached
+    );
+    expect(breach.resolvedAt).toBeTruthy();
   });
 
   it("completes a UPI-on-delivery order when admin records collection", async () => {

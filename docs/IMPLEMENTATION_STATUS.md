@@ -37,11 +37,20 @@ The backend was moved off the vulnerable Express/Multer production dependency pa
 
 The fresh lock audit report is recorded in `docs/PHASE_6_LOCK_AUDIT_REPORT.md`. Phase 7 may be planned after this baseline, but Phase 7 code changes must wait for explicit confirmation.
 
+## Phase 7 Operations Hardening Started
+
+Phase 7 began after the Phase 6 locked baseline. The first backend-only slice adds production operations hardening without adding blocked MVP features.
+
+- Added notification delivery metadata so in-app/push notification rows record delivery status, attempts, errors, and dispatch metadata.
+- Kept FCM non-blocking: notification dispatch failures are recorded but do not block order creation or lifecycle transitions.
+- Added backend-controlled admin attention queue for manual operations SLA alerts: vendor acceptance delay, rider assignment delay, and pickup delay.
+- Added breached SLA event persistence and automatic breach resolution when the relevant lifecycle event occurs.
+- Added `GET /admin/attention-queue` to the backend contract and OpenAPI required-path check.
+
 ## Remaining Product Work
 
-- Replace event-handler log boundaries with production notification/SLA/reconciliation persistence where needed.
+- Continue replacing remaining event-handler log boundaries with production persistence where needed, especially reconciliation alert records and mobile crash/error integrations.
 - Add production SMS provider behind the OTP adapter when vendor/legal/provider choice is finalized.
 - Upload code for product images and compliance/KYC documents already exists, but it is outside the clean Phase 6 scope and must be reviewed/finished as later-phase work.
-- Replace remaining event-handler log boundaries with FCM sends, SLA records, and reconciliation alert records where needed.
 - Generate Flutter platform folders once Flutter SDK is installed.
 - Install dependencies and run full backend/admin/mobile test suites.

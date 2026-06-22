@@ -403,32 +403,32 @@ model Category {
 }
 
 model Product {
-  id             String           @id @default(uuid())
-  vendorId       String
-  categoryId     String
-  name           String
-  description    String?
-  imageUrl       String?
-  unit           String
-  productType    String           @default("FOOD")
-  isStockManaged Boolean          @default(false)
-  isApproved     Boolean          @default(false)
-  isAvailable    Boolean          @default(true)
-  approvalStatus OnboardingStatus @default(PENDING)
-  createdBy      String?
-  approvedBy     String?
-  mrp            Decimal          @default(0) @db.Decimal(10, 2)
-  margin         Decimal          @default(0) @db.Decimal(10, 2)
-  shelfLifeDays  Int?
+  id              String           @id @default(uuid())
+  vendorId        String
+  categoryId      String
+  name            String
+  description     String?
+  imageUrl        String?
+  unit            String
+  productType     String           @default("FOOD")
+  isStockManaged  Boolean          @default(false)
+  isApproved      Boolean          @default(false)
+  isAvailable     Boolean          @default(true)
+  approvalStatus  OnboardingStatus @default(PENDING)
+  createdBy       String?
+  approvedBy      String?
+  mrp             Decimal          @default(0) @db.Decimal(10, 2)
+  margin          Decimal          @default(0) @db.Decimal(10, 2)
+  shelfLifeDays   Int?
   freshnessStatus String           @default("FRESH")
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  deletedAt      DateTime?
-  vendor         Vendor           @relation(fields: [vendorId], references: [id])
-  category       Category         @relation(fields: [categoryId], references: [id])
-  prices         ProductPrice[]
-  cartItems      CartItem[]
-  orderItems     OrderItem[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+  vendor          Vendor           @relation(fields: [vendorId], references: [id])
+  category        Category         @relation(fields: [categoryId], references: [id])
+  prices          ProductPrice[]
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
 
   @@index([vendorId, isAvailable])
   @@index([categoryId])
@@ -705,20 +705,20 @@ model RiderPayout {
 }
 
 model Payout {
-  id             String          @id @default(uuid())
+  id             String             @id @default(uuid())
   payeeType      PayoutPayeeType
   vendorId       String?
   riderId        String?
-  status         PayoutStatus    @default(PAYOUT_NOT_DUE)
-  amount         Decimal         @db.Decimal(10, 2)
+  status         PayoutStatus       @default(PAYOUT_NOT_DUE)
+  amount         Decimal            @db.Decimal(10, 2)
   adjustmentNote String?
   approvedBy     String?
   approvedAt     DateTime?
   paidAt         DateTime?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  vendor         Vendor?         @relation(fields: [vendorId], references: [id])
-  rider          Rider?          @relation(fields: [riderId], references: [id])
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  vendor         Vendor?            @relation(fields: [vendorId], references: [id])
+  rider          Rider?             @relation(fields: [riderId], references: [id])
   adjustments    PayoutAdjustment[]
 
   @@index([payeeType, status])
@@ -773,17 +773,23 @@ model IncidentReport {
 }
 
 model Notification {
-  id        String    @id @default(uuid())
-  userId    String
-  title     String
-  body      String
-  data      Json?
-  sentAt    DateTime?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id])
+  id               String    @id @default(uuid())
+  userId           String
+  title            String
+  body             String
+  data             Json?
+  channel          String    @default("IN_APP")
+  deliveryStatus   String    @default("PENDING")
+  deliveryAttempts Int       @default(0)
+  deliveryError    String?
+  deliveryMetadata Json?
+  sentAt           DateTime?
+  readAt           DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
+  @@index([deliveryStatus, createdAt])
 }
 
 model CustomerDevice {
@@ -919,16 +925,18 @@ model ReleaseNote {
 }
 
 model SlaEvent {
-  id        String   @id @default(uuid())
-  orderId   String
-  type      String
-  breached  Boolean  @default(false)
-  metadata  Json?
-  createdAt DateTime @default(now())
-  order     Order    @relation(fields: [orderId], references: [id])
+  id         String    @id @default(uuid())
+  orderId    String
+  type       String
+  breached   Boolean   @default(false)
+  metadata   Json?
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  order      Order     @relation(fields: [orderId], references: [id])
 
   @@index([orderId, createdAt])
   @@index([breached, createdAt])
+  @@index([type, breached, resolvedAt, createdAt])
 }
 
 model IdempotencyKey {
@@ -945,25 +953,25 @@ model IdempotencyKey {
 }
 
 model OrderSubstitution {
-  id                  String   @id @default(uuid())
-  orderId             String
-  orderItemId         String
-  originalProductId   String
+  id                   String   @id @default(uuid())
+  orderId              String
+  orderItemId          String
+  originalProductId    String
   substitutedProductId String
-  requestedQuantity   Decimal  @db.Decimal(10, 3)
-  fulfilledQuantity   Decimal  @db.Decimal(10, 3)
-  status              String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  note                String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  order               Order    @relation(fields: [orderId], references: [id])
+  requestedQuantity    Decimal  @db.Decimal(10, 3)
+  fulfilledQuantity    Decimal  @db.Decimal(10, 3)
+  status               String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  note                 String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  order                Order    @relation(fields: [orderId], references: [id])
 }
 
 model OrderItemQualityIssue {
   id          String   @id @default(uuid())
   orderItemId String
   reportedBy  String
-  category    String   // e.g., DAMAGED, SPOILED, WRONG_ITEM
+  category    String // e.g., DAMAGED, SPOILED, WRONG_ITEM
   description String
   status      String   @default("OPEN") // OPEN, IN_REVIEW, RESOLVED, REJECTED
   createdAt   DateTime @default(now())
@@ -972,9 +980,9 @@ model OrderItemQualityIssue {
 
 model ComplianceAuditEvent {
   id          String   @id @default(uuid())
-  entityType  String   // e.g., VENDOR, RIDER
+  entityType  String // e.g., VENDOR, RIDER
   entityId    String
-  action      String   // e.g., VERIFIED_FSSAI, EXPIRED_FSSAI
+  action      String // e.g., VERIFIED_FSSAI, EXPIRED_FSSAI
   status      String
   performedBy String
   notes       String?
@@ -986,7 +994,7 @@ model FoodSafetyIncident {
   orderId     String
   vendorId    String
   reportedBy  String
-  severity    String    // e.g., LOW, MEDIUM, HIGH, CRITICAL
+  severity    String // e.g., LOW, MEDIUM, HIGH, CRITICAL
   description String
   status      String    @default("OPEN") // OPEN, INVESTIGATING, RESOLVED, PENALIZED
   resolvedAt  DateTime?
@@ -996,13 +1004,13 @@ model FoodSafetyIncident {
 }
 
 model PayoutAdjustment {
-  id          String   @id @default(uuid())
-  payoutId    String
-  amount      Decimal  @db.Decimal(10, 2)
-  type        String   // e.g., PENALTY, BONUS, REIMBURSEMENT
-  reason      String
-  createdAt   DateTime @default(now())
-  payout      Payout   @relation(fields: [payoutId], references: [id])
+  id        String   @id @default(uuid())
+  payoutId  String
+  amount    Decimal  @db.Decimal(10, 2)
+  type      String // e.g., PENALTY, BONUS, REIMBURSEMENT
+  reason    String
+  createdAt DateTime @default(now())
+  payout    Payout   @relation(fields: [payoutId], references: [id])
 }
 
 model InvoiceReceipt {

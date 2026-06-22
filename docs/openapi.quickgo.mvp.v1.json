@@ -564,6 +564,15 @@
         "responses": { "200": { "$ref": "#/components/responses/Success" } }
       }
     },
+    "/admin/attention-queue": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List manual operations SLA attention alerts",
+        "operationId": "adminAttentionQueue",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Success" } }
+      }
+    },
     "/admin/orders": {
       "get": {
         "tags": ["Admin"],

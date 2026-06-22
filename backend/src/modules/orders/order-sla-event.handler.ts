@@ -35,12 +35,48 @@ export class OrderSlaEventHandler implements OnModuleInit, OnModuleDestroy {
       this.eventBus.on("vendor.order_accepted", async (event) => {
         this.logger.log(`sla_vendor_response_recorded order=${event.payload.orderId}`);
         try {
+          await this.resolveBreaches(event.payload.orderId, ["VENDOR_ACCEPTANCE_DELAY"]);
           await this.prisma.slaEvent.create({
             data: {
               orderId: event.payload.orderId,
               type: "VENDOR_ACCEPTED",
               breached: false,
               metadata: { eventId: event.id }
+            }
+          });
+        } catch (err) {
+          this.logger.error("Failed to create SlaEvent", err);
+        }
+      }),
+      this.eventBus.on("delivery.rider_assigned", async (event) => {
+        this.logger.log(`sla_rider_assignment_recorded order=${event.payload.orderId}`);
+        try {
+          await this.resolveBreaches(event.payload.orderId, ["RIDER_ASSIGNMENT_DELAY"]);
+          await this.prisma.slaEvent.create({
+            data: {
+              orderId: event.payload.orderId,
+              type: "RIDER_PICKUP_WATCH",
+              breached: false,
+              metadata: { eventId: event.id, riderId: event.payload.riderId }
+            }
+          });
+        } catch (err) {
+          this.logger.error("Failed to create SlaEvent", err);
+        }
+      }),
+      this.eventBus.on("delivery.rider_reassigned", async (event) => {
+        this.logger.log(`sla_rider_reassignment_recorded order=${event.payload.orderId}`);
+        try {
+          await this.resolveBreaches(event.payload.orderId, [
+            "RIDER_ASSIGNMENT_DELAY",
+            "PICKUP_DELAY"
+          ]);
+          await this.prisma.slaEvent.create({
+            data: {
+              orderId: event.payload.orderId,
+              type: "RIDER_PICKUP_WATCH",
+              breached: false,
+              metadata: { eventId: event.id, riderId: event.payload.riderId, reassigned: true }
             }
           });
         } catch (err) {
@@ -62,9 +98,30 @@ export class OrderSlaEventHandler implements OnModuleInit, OnModuleDestroy {
           this.logger.error("Failed to create SlaEvent", err);
         }
       }),
+      this.eventBus.on("delivery.picked_up", async (event) => {
+        this.logger.log(`sla_pickup_recorded order=${event.payload.orderId}`);
+        try {
+          await this.resolveBreaches(event.payload.orderId, ["PICKUP_DELAY"]);
+          await this.prisma.slaEvent.create({
+            data: {
+              orderId: event.payload.orderId,
+              type: "PICKED_UP",
+              breached: false,
+              metadata: { eventId: event.id }
+            }
+          });
+        } catch (err) {
+          this.logger.error("Failed to create SlaEvent", err);
+        }
+      }),
       this.eventBus.on("delivery.delivered", async (event) => {
         this.logger.log(`sla_watch_completed order=${event.payload.orderId}`);
         try {
+          await this.resolveBreaches(event.payload.orderId, [
+            "VENDOR_ACCEPTANCE_DELAY",
+            "RIDER_ASSIGNMENT_DELAY",
+            "PICKUP_DELAY"
+          ]);
           await this.prisma.slaEvent.create({
             data: {
               orderId: event.payload.orderId,
@@ -80,6 +137,11 @@ export class OrderSlaEventHandler implements OnModuleInit, OnModuleDestroy {
       this.eventBus.on("order.cancelled", async (event) => {
         this.logger.log(`sla_watch_closed order=${event.payload.orderId}`);
         try {
+          await this.resolveBreaches(event.payload.orderId, [
+            "VENDOR_ACCEPTANCE_DELAY",
+            "RIDER_ASSIGNMENT_DELAY",
+            "PICKUP_DELAY"
+          ]);
           await this.prisma.slaEvent.create({
             data: {
               orderId: event.payload.orderId,
@@ -100,5 +162,16 @@ export class OrderSlaEventHandler implements OnModuleInit, OnModuleDestroy {
       registration.unsubscribe();
     }
   }
-}
 
+  private resolveBreaches(orderId: string, types: string[]) {
+    return this.prisma.slaEvent.updateMany({
+      where: {
+        orderId,
+        type: { in: types },
+        breached: true,
+        resolvedAt: null
+      },
+      data: { resolvedAt: new Date() }
+    });
+  }
+}

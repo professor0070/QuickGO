@@ -288,6 +288,11 @@ export class InMemoryPrismaService {
         }
         return customer;
       },
+      findMany: async ({ where, orderBy, include, select }: any = {}) => {
+        const rows = this.sort(this.store.customers.filter((item) => this.matches(item, where)), orderBy);
+        const hydrated = rows.map((item) => this.hydrateCustomer(item, include));
+        return select ? hydrated.map((item) => this.selectFields(item, select)) : hydrated;
+      },
       update: async ({ where, data, include }: any) => {
         const customer = this.store.customers.find((item) => item.id === where.id);
         if (!customer) {
@@ -952,12 +957,33 @@ export class InMemoryPrismaService {
     };
 
     this.notification = {
+      create: async ({ data }: any) => {
+        const notification = {
+          id: this.id("notification"),
+          sentAt: null,
+          readAt: null,
+          createdAt: new Date(),
+          channel: "IN_APP",
+          deliveryStatus: "PENDING",
+          deliveryAttempts: 0,
+          deliveryError: null,
+          deliveryMetadata: null,
+          ...data
+        };
+        this.store.notifications.push(notification);
+        return notification;
+      },
       createMany: async ({ data }: any) => {
         const rows = data.map((item: any) => ({
           id: this.id("notification"),
           sentAt: null,
           readAt: null,
           createdAt: new Date(),
+          channel: "IN_APP",
+          deliveryStatus: "PENDING",
+          deliveryAttempts: 0,
+          deliveryError: null,
+          deliveryMetadata: null,
           ...item
         }));
         this.store.notifications.push(...rows);
@@ -1024,13 +1050,21 @@ export class InMemoryPrismaService {
           id: this.id("sla"),
           createdAt: new Date(),
           breached: false,
+          resolvedAt: null,
           ...data
         };
         this.store.slaEvents.push(event);
         return event;
       },
+      findFirst: async ({ where }: any = {}) =>
+        this.store.slaEvents.find((item) => this.matches(item, where)) ?? null,
       findMany: async ({ where }: any = {}) =>
-        this.store.slaEvents.filter((item) => this.matches(item, where))
+        this.store.slaEvents.filter((item) => this.matches(item, where)),
+      updateMany: async ({ where, data }: any) => {
+        const rows = this.store.slaEvents.filter((item) => this.matches(item, where));
+        rows.forEach((item) => Object.assign(item, data));
+        return { count: rows.length };
+      }
     };
 
     this.riderDevice = {

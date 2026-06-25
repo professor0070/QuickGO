@@ -1,7 +1,7 @@
 import { IsIn, IsObject, IsOptional, IsString, Matches } from "class-validator";
 
 export class SendOtpDto {
-  @Matches(/^[6-9]\d{9}$/)
+  @Matches(/^(\+91)?[6-9]\d{9}$/)
   phone!: string;
 
   @IsIn(["LOGIN"])
@@ -9,7 +9,7 @@ export class SendOtpDto {
 }
 
 export class VerifyOtpDto {
-  @Matches(/^[6-9]\d{9}$/)
+  @Matches(/^(\+91)?[6-9]\d{9}$/)
   phone!: string;
 
   @IsString()

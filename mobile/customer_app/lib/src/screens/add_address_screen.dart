@@ -17,19 +17,31 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _pincode = TextEditingController();
-  final _latitude = TextEditingController();
-  final _longitude = TextEditingController();
+  
   var _submitting = false;
 
   Future<void> _saveAddress() async {
-    if (_receiverName.text.isEmpty ||
-        _receiverPhone.text.isEmpty ||
-        _line1.text.isEmpty ||
-        _city.text.isEmpty ||
-        _state.text.isEmpty) {
+    final receiverPhoneText = _receiverPhone.text.trim();
+    final pincodeText = _pincode.text.trim();
+
+    if (_receiverName.text.trim().isEmpty ||
+        receiverPhoneText.isEmpty ||
+        _line1.text.trim().isEmpty ||
+        _city.text.trim().isEmpty ||
+        _state.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill all mandatory fields.')),
       );
+      return;
+    }
+
+    if (!RegExp(r'^\d{10}$').hasMatch(receiverPhoneText)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid phone number.')));
+      return;
+    }
+
+    if (pincodeText.isNotEmpty && !RegExp(r'^\d{6}$').hasMatch(pincodeText)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 6-digit pincode.')));
       return;
     }
 
@@ -37,17 +49,14 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final address = await client.postMap('/customer/addresses', {
-        'receiver_name': _receiverName.text,
-        'receiver_phone': _receiverPhone.text,
-        'line1': _line1.text,
-        'line2': _line2.text,
-        'city': _city.text,
-        'state': _state.text,
-        'pincode': _pincode.text,
-        if (_latitude.text.trim().isNotEmpty)
-          'latitude': double.tryParse(_latitude.text.trim()),
-        if (_longitude.text.trim().isNotEmpty)
-          'longitude': double.tryParse(_longitude.text.trim()),
+        'receiver_name': _receiverName.text.trim(),
+        'receiver_phone': receiverPhoneText,
+        'line1': _line1.text.trim(),
+        'line2': _line2.text.trim(),
+        'city': _city.text.trim(),
+        'state': _state.text.trim(),
+        'pincode': pincodeText,
+        // Latitude/Longitude intentionally omitted from customer-provided payload
       });
 
       ref.invalidate(addressesProvider);
@@ -59,9 +68,9 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add address: $e')),
-      );
+      final err = e.toString();
+      final msg = err.contains('Network') ? 'Network error. Check your connection.' : 'Failed to add address. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -112,19 +121,7 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
             decoration: const InputDecoration(labelText: 'Pincode'),
           ),
           const SizedBox(height: 8),
-          TextField(
-            controller: _latitude,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-                labelText: 'Latitude (required for serviceability)'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _longitude,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-                labelText: 'Longitude (required for serviceability)'),
-          ),
+          // Latitude/Longitude removed from MVP customer UI
           const SizedBox(height: 24),
           _submitting
               ? const Center(child: CircularProgressIndicator())
@@ -135,5 +132,17 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _receiverName.dispose();
+    _receiverPhone.dispose();
+    _line1.dispose();
+    _line2.dispose();
+    _city.dispose();
+    _state.dispose();
+    _pincode.dispose();
+    super.dispose();
   }
 }

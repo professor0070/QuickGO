@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quickgo_shared_auth/quickgo_auth.dart';
 import '../providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -19,44 +20,60 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   var _submitting = false;
 
   Future<void> _sendOtp() async {
-    if (_phone.text.isEmpty) return;
+    final phoneText = _phone.text.trim();
+    String normalized;
+    try {
+      normalized = QuickGoAuthRepository.normalizeIndianPhone(phoneText);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid phone number.')));
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final repo = ref.read(authRepositoryProvider);
-      await repo.sendOtp(_phone.text);
+      await repo.sendOtp(normalized);
       if (!mounted) return;
       setState(() => _otpSent = true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send OTP: $e')),
-      );
+      final msg = e.toString().contains('Network') ? 'Network error. Check your connection.' : 'Something went wrong. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
   Future<void> _verifyOtp() async {
-    if (_otp.text.isEmpty) return;
+    final otpText = _otp.text.trim();
+    if (!RegExp(r'^\d{6}$').hasMatch(otpText)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid OTP.')));
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final repo = ref.read(authRepositoryProvider);
-      final response = await repo.verifyOtp(_phone.text, _otp.text);
-      final token = response['access_token'] as String;
-      final user = response['user'] as Map<String, dynamic>;
+      final normalized = QuickGoAuthRepository.normalizeIndianPhone(_phone.text.trim());
+      final response = await repo.verifyOtp(normalized, otpText);
+      final token = response['access_token'] as String?;
+      final user = response['user'] as Map<String, dynamic>?;
+      if (token == null || user == null) {
+        throw Exception('Malformed server response');
+      }
 
       ref.read(sessionProvider.notifier).authenticate(
             token,
-            user['phone'] as String,
-            user['id'] as String,
+            user['phone'] as String? ?? '',
+            user['id'] as String? ?? '',
           );
       if (!mounted) return;
       widget.onVerified();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to verify OTP: $e')),
-      );
+      final err = e.toString();
+      String msg = 'Something went wrong. Please try again.';
+      if (err.contains('Invalid OTP') || err.contains('OTP')) msg = 'Invalid OTP.';
+      if (err.contains('Network')) msg = 'Network error. Check your connection.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -112,5 +129,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _phone.dispose();
+    _otp.dispose();
+    super.dispose();
   }
 }

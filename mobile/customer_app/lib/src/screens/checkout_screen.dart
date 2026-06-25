@@ -198,7 +198,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : FilledButton(
                       onPressed: selectedAddress != null
-                          ? () => _placeOrder(cart, selectedAddress)
+                          ? () {
+                              // Defensive checks before placing order
+                              if (items.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Your cart is empty.')));
+                                return;
+                              }
+                              _placeOrder(cart, selectedAddress);
+                            }
                           : null,
                       child: const Text('Place Order'),
                     ),

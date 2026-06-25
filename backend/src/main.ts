@@ -6,13 +6,41 @@ import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify
 import fastifyHelmet from "@fastify/helmet";
 import fastifyMultipart from "@fastify/multipart";
 import { AppModule } from "./app.module";
+import { Readable } from "stream";
 import { AllExceptionsFilter } from "./common/http/all-exceptions.filter";
 import { ApiResponseInterceptor } from "./common/http/api-response.interceptor";
 
 async function bootstrap() {
+  const adapter = new FastifyAdapter();
+  const fastifyInstance = adapter.getInstance();
+  
+  fastifyInstance.addHook("preParsing", (request, reply, payload, done) => {
+    let rawBody = "";
+    const passThrough = new Readable({
+      read() {}
+    });
+
+    payload.on("data", (chunk) => {
+      const str = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      rawBody += str;
+      passThrough.push(chunk);
+    });
+
+    payload.on("end", () => {
+      (request as any).rawBody = rawBody;
+      passThrough.push(null);
+    });
+
+    payload.on("error", (err) => {
+      passThrough.emit("error", err);
+    });
+
+    done(null, passThrough);
+  });
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter()
+    adapter
   );
   const config = app.get(ConfigService);
 
@@ -29,7 +57,8 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = config.getOrThrow<number>("PORT");
-  await app.listen(port);
+  // Bind to all interfaces for local device testing.
+  await app.listen(port, "0.0.0.0");
 }
 
 void bootstrap();

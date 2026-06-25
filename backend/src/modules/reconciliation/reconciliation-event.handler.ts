@@ -82,17 +82,20 @@ export class ReconciliationEventHandler implements OnModuleInit, OnModuleDestroy
     const expectedAmount = this.asMoney(payment.amount ?? payment.order?.totalAmount);
     const collectedAmount = this.asMoney(event.payload.amount);
     const metadata = this.alertMetadata(event);
+    const isDigital = payment.method === "RAZORPAY" || payment.method === "UPI";
 
-    await this.ensureOpenAlert({
-      orderId: payment.orderId,
-      paymentId: payment.id,
-      type: "COLLECTION_PENDING",
-      severity: "MEDIUM",
-      expectedAmount,
-      collectedAmount,
-      message: "Payment collection is awaiting admin reconciliation",
-      metadata
-    });
+    if (!isDigital) {
+      await this.ensureOpenAlert({
+        orderId: payment.orderId,
+        paymentId: payment.id,
+        type: "COLLECTION_PENDING",
+        severity: "MEDIUM",
+        expectedAmount,
+        collectedAmount,
+        message: "Payment collection is awaiting admin reconciliation",
+        metadata
+      });
+    }
 
     if (this.amountsDiffer(collectedAmount, expectedAmount)) {
       await this.ensureOpenAlert({

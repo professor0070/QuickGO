@@ -9,6 +9,7 @@ import { ApiResponseInterceptor } from "../src/common/http/api-response.intercep
 import { PrismaService } from "../src/modules/common/prisma.service";
 import { FILE_STORAGE } from "../src/modules/uploads/file-storage.service";
 import { InMemoryPrismaService } from "./support/in-memory-prisma";
+import { normalizeIndianPhone } from "../src/common/phone.util";
 
 const request = require("supertest") as any;
 const serviceZoneId = "00000000-0000-4000-8000-000000000001";
@@ -58,7 +59,7 @@ describe("QuickGO MVP backend flow (e2e)", () => {
 
   beforeEach(() => {
     prisma.reset();
-    prisma.seedUserWithRoles("9999999999", ["SUPER_ADMIN"]);
+    prisma.seedUserWithRoles(normalizeIndianPhone("9999999999"), ["SUPER_ADMIN"]);
     storedUploads.length = 0;
   });
 
@@ -1057,9 +1058,10 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   });
 
   async function login(phone: string) {
+    const normalized = normalizeIndianPhone(phone);
     const response = await request(app.getHttpServer())
       .post("/api/v1/auth/verify-otp")
-      .send({ phone, otp: "123456" })
+      .send({ phone: normalized, otp: "123456" })
       .expect(201);
     return response.body.data.access_token as string;
   }
@@ -1138,7 +1140,7 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   async function placeOrder(
     customerToken: string,
     productId: string,
-    paymentMethod: "COD" | "UPI_ON_DELIVERY",
+    paymentMethod: "COD" | "UPI_ON_DELIVERY" | "RAZORPAY" | "UPI",
     keyPrefix: string
   ) {
     const address = await request(app.getHttpServer())
@@ -1169,7 +1171,7 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   async function createOrder(
     customerToken: string,
     addressId: string,
-    paymentMethod: "COD" | "UPI_ON_DELIVERY",
+    paymentMethod: "COD" | "UPI_ON_DELIVERY" | "RAZORPAY" | "UPI",
     idempotencyKey: string
   ) {
     const response = await request(app.getHttpServer())
@@ -1192,4 +1194,96 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   async function flushEvents() {
     await new Promise((resolve) => setImmediate(resolve));
   }
+
+  it("completes a RAZORPAY order through online checkout, verification, auto-completion, and payouts", async () => {
+    const adminToken = await login("9999999999");
+    const setup = await createOperationalSetup(adminToken);
+    const customerToken = await login("9333333333");
+    
+    // 1. Place order with RAZORPAY
+    const order = await placeOrder(customerToken, setup.productId, "RAZORPAY", "rzp-create");
+
+    expect(order.status).toBe("PAYMENT_PENDING");
+    expect(order.paymentStatus).toBe("PENDING");
+
+    const createRes = await request(app.getHttpServer())
+      .post("/api/v1/payments/create-razorpay-order")
+      .set("Authorization", bearer(customerToken))
+      .send({ orderId: order.id })
+      .expect(201);
+
+    expect(createRes.body.data.gatewayOrderId).toBeDefined();
+
+    const gatewayOrderId = createRes.body.data.gatewayOrderId;
+
+    // 3. Verify Payment
+    const verifyRes = await request(app.getHttpServer())
+      .post("/api/v1/payments/verify-razorpay-payment")
+      .set("Authorization", bearer(customerToken))
+      .send({
+        orderId: order.id,
+        razorpayOrderId: gatewayOrderId,
+        razorpayPaymentId: "rzp_pay_999",
+        razorpaySignature: "mock_signature"
+      })
+      .expect(201);
+
+    expect(verifyRes.body.data.success).toBe(true);
+
+    // Order status should now be PLACED, and paymentStatus should be SUCCESS
+    const afterPay = await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders/${order.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+
+    expect(afterPay.body.data.status).toBe("PLACED");
+    expect(afterPay.body.data.paymentStatus).toBe("SUCCESS");
+
+    // 4. Progress order to ready
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/accept`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .set("Idempotency-Key", nextKey("rzp-accept"))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/preparing`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/vendor/orders/${order.id}/ready`)
+      .set("Authorization", bearer(setup.vendorToken))
+      .expect(201);
+
+    // 5. Assign rider and pickup
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/orders/${order.id}/assign-rider`)
+      .set("Authorization", bearer(adminToken))
+      .set("Idempotency-Key", nextKey("rzp-assign"))
+      .send({ rider_id: setup.riderId, reason: "Dispatch prepaid" })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/picked-up`)
+      .set("Authorization", bearer(setup.riderToken))
+      .expect(201);
+
+    // 6. Deliver order (Prepaid order should auto-complete and generate payouts)
+    await request(app.getHttpServer())
+      .post(`/api/v1/rider/orders/${order.id}/delivered`)
+      .set("Authorization", bearer(setup.riderToken))
+      .set("Idempotency-Key", nextKey("rzp-delivered"))
+      .expect(201);
+
+    // 7. Verify order status is COMPLETED and payouts are created
+    const finalDetail = await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders/${order.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+
+    expect(finalDetail.body.data.status).toBe("COMPLETED");
+    expect(finalDetail.body.data.paymentStatus).toBe("SUCCESS");
+    expect(prisma.payoutCount()).toBe(2);
+  });
 });

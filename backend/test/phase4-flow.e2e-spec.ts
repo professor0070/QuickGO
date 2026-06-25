@@ -7,6 +7,7 @@ import { AllExceptionsFilter } from "../src/common/http/all-exceptions.filter";
 import { ApiResponseInterceptor } from "../src/common/http/api-response.interceptor";
 import { PrismaService } from "../src/modules/common/prisma.service";
 import { InMemoryPrismaService } from "./support/in-memory-prisma";
+import { normalizeIndianPhone } from "../src/common/phone.util";
 
 const request = require("supertest") as any;
 const serviceZoneId = "00000000-0000-4000-8000-000000000001";
@@ -38,7 +39,7 @@ describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
 
   beforeEach(() => {
     prisma.reset();
-    prisma.seedUserWithRoles("9999999999", ["SUPER_ADMIN"]);
+    prisma.seedUserWithRoles(normalizeIndianPhone("9999999999"), ["SUPER_ADMIN"]);
   });
 
   afterAll(async () => {
@@ -46,9 +47,10 @@ describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
   });
 
   async function login(phone: string) {
+    const normalized = normalizeIndianPhone(phone);
     const response = await request(app.getHttpServer())
       .post("/api/v1/auth/verify-otp")
-      .send({ phone, otp: "123456" })
+      .send({ phone: normalized, otp: "123456" })
       .expect(201);
     return response.body.data.access_token as string;
   }

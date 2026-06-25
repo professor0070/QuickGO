@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import 'package:quickgo_shared_auth/quickgo_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final apiClientProvider = Provider<QuickGoApiClient>((ref) {
   return QuickGoApiClient();
@@ -30,9 +31,35 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = SessionState(token: token, phone: phone, userId: userId);
   }
 
-  void logout() {
+  Future<void> logout() async {
     _client.setBearerToken('');
     state = SessionState();
+    // Best-effort: remove common persisted keys so reopening app won't auto-login
+    // Remove any auth token from the API client
+    _client.setBearerToken('');
+
+    // reset app session state
+    state = SessionState();
+
+    // Best-effort: clear common shared preferences keys used for tokens
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in [
+        'quickgo_auth_token',
+        'quickgo_api_url',
+        'access_token',
+        'token',
+        'auth_token',
+      ]) {
+        try {
+          await prefs.remove(k);
+        } catch (_) {
+          // ignore individual key removal errors
+        }
+      }
+    } catch (_) {
+      // ignore prefs errors
+    }
   }
 }
 
@@ -100,11 +127,10 @@ final serviceabilityProvider = FutureProvider<Map<String, dynamic>>((ref) async 
 
   final latitude = num.tryParse(address['latitude']?.toString() ?? '');
   final longitude = num.tryParse(address['longitude']?.toString() ?? '');
+  // If coordinates are missing from selected address, do not block MVP flows.
+  // Serviceability will be evaluated server-side later using address/pincode.
   if (latitude == null || longitude == null) {
-    return const {
-      'serviceable': false,
-      'reason': 'SERVICE_ZONE_UNAVAILABLE',
-    };
+    return const {'serviceable': true};
   }
 
   final client = ref.watch(apiClientProvider);

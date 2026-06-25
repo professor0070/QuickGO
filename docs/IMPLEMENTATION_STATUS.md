@@ -98,3 +98,18 @@ Gate decisions:
 - Fix Partner App Android APK packaging for `url_launcher_android` Kotlin compile/cache path failure before production distribution or closed testing.
 - Flutter Android/iOS platform folders exist locally but remain ignored/generated artifacts in this repository; Android release packaging should generate/verify them in release workstations or CI.
 - Install dependencies and run full backend/admin/mobile test suites during each lock audit.
+
+## Phase 9 Online Payments, Reconciliation, Settlements & Payouts
+
+Phase 9 was audited and fully locked on 2026-06-25. The formal lock report is recorded in `docs/PHASE_9_LOCK_AUDIT_REPORT.md`.
+
+Implemented Phase 9 work:
+- Razorpay server-side order generation and signature verification.
+- Webhook processor for payment.captured and payment.failed events.
+- Enforced global rate limiting via ThrottlerGuard (with test mode bypass checks).
+- Enforced payments API idempotency (checks SUCCESS status to prevent duplicate actions/events).
+- Exposed admin reconciliation summary aggregates, all payments query, and payout approval/notes endpoints.
+- Upgraded Admin Panel UI with metrics dashboards, payout filter tabs, alerts review list, and collection action tables.
+- Applied all schema migrations (Operations Hardening, Reconciliation Alerts, Rider Mode) to the local dev database.
+- Fixed Customer App address submission regex validations (removed literal dollar sign requirement).
+

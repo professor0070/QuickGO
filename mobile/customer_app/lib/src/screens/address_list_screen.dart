@@ -61,7 +61,7 @@ class AddressListScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error loading addresses: $err')),
+        error: (err, _) => Center(child: Text('Something went wrong. Please try again.')),
       ),
     );
   }

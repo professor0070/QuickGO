@@ -46,9 +46,19 @@ export class AdminController {
     return this.admin.attentionQueue();
   }
 
-  @Get("reconciliation-alerts")
+  @Get(["reconciliation-alerts", "reconciliation/alerts"])
   reconciliationAlerts() {
     return this.admin.reconciliationAlerts();
+  }
+
+  @Get("reconciliation/summary")
+  reconciliationSummary() {
+    return this.admin.reconciliationSummary();
+  }
+
+  @Get("payments")
+  allPayments() {
+    return this.admin.allPayments();
   }
 
   @Get("orders")

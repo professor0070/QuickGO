@@ -102,7 +102,10 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
     PAYMENT_RECONCILIATION_ENABLED: readBoolean(
       config.PAYMENT_RECONCILIATION_ENABLED,
       true
-    )
+    ),
+    RAZORPAY_KEY_ID: readString(config.RAZORPAY_KEY_ID, "rzp_test_placeholder_key_id"),
+    RAZORPAY_KEY_SECRET: readString(config.RAZORPAY_KEY_SECRET, "rzp_test_placeholder_key_secret"),
+    RAZORPAY_WEBHOOK_SECRET: readString(config.RAZORPAY_WEBHOOK_SECRET, "rzp_test_placeholder_webhook_secret")
   };
 
   if (errors.length > 0) {

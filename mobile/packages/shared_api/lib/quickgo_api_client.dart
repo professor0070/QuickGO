@@ -4,7 +4,7 @@ class QuickGoApiClient {
   QuickGoApiClient({
     String baseUrl = const String.fromEnvironment(
       'QUICKGO_API_BASE_URL',
-      defaultValue: 'http://10.0.2.2:3000/api/v1',
+      defaultValue: 'http://10.38.163.97:3000/api/v1',
     ),
     Dio? dio,
   }) : _dio =
@@ -13,7 +13,7 @@ class QuickGoApiClient {
              BaseOptions(
                baseUrl: baseUrl,
                connectTimeout: const Duration(seconds: 12),
-               receiveTimeout: const Duration(seconds: 12),
+               receiveTimeout: const Duration(seconds: 30),
                headers: {'Content-Type': 'application/json'},
              ),
            );

@@ -173,8 +173,11 @@ export class InMemoryPrismaService {
     return undefined;
   }
 
-  async $transaction<T>(handler: (tx: this) => Promise<T>) {
-    return handler(this);
+  async $transaction<T>(handlerOrArray: ((tx: this) => Promise<T>) | Promise<any>[]) {
+    if (Array.isArray(handlerOrArray)) {
+      return Promise.all(handlerOrArray);
+    }
+    return handlerOrArray(this);
   }
 
   seedUserWithRoles(phone: string, roles: string[]) {
@@ -230,6 +233,16 @@ export class InMemoryPrismaService {
     };
 
     this.user = {
+      create: async ({ data, include }: any) => {
+        const user = this.upsertUser(data.phone, data);
+        const nestedRole = data.roles?.create?.role;
+        const roleCode = nestedRole?.connectOrCreate?.where?.code;
+        if (roleCode) {
+          const role = this.ensureRole(roleCode, nestedRole.connectOrCreate.create);
+          this.upsertUserRole(user.id, role.id);
+        }
+        return include?.roles ? this.withUserRoles(user) : user;
+      },
       upsert: async ({ where, create, update, include }: any) => {
         const user = this.upsertUser(where.phone, { ...create, ...update });
         const nestedRole = create?.roles?.create?.role;
@@ -813,31 +826,31 @@ export class InMemoryPrismaService {
 
     this.payment = {
       findUnique: async ({ where, include }: any) => {
-        const payment = this.store.payments.find((item) => item.id === where.id);
+        const payment = this.store.payments.find(
+          (item) => item.id === where.id || (where.gatewayOrderId && item.gatewayOrderId === where.gatewayOrderId)
+        );
         if (!payment) {
           return null;
         }
-        return {
-          ...payment,
-          ...(include?.order
-            ? { order: this.store.orders.find((order) => order.id === payment.orderId) }
-            : {}),
-          ...(include?.reconciliationEvents
-            ? {
-                reconciliationEvents: this.store.paymentReconciliationEvents.filter(
-                  (event) => event.paymentId === payment.id
-                )
-              }
-            : {})
-        };
+        return this.hydratePayment(payment, include);
+      },
+      findFirst: async ({ where, include }: any) => {
+        const payment = this.store.payments.find((item) => this.matches(item, where));
+        return payment ? this.hydratePayment(payment, include) : null;
+      },
+      findMany: async ({ where, include, orderBy }: any = {}) => {
+        const rows = this.sort(this.store.payments.filter((item) => this.matches(item, where)), orderBy);
+        return rows.map((item) => this.hydratePayment(item, include));
       },
       update: async ({ where, data, include }: any) => {
-        const payment = this.store.payments.find((item) => item.id === where.id);
+        const payment = this.store.payments.find(
+          (item) => item.id === where.id || (where.gatewayOrderId && item.gatewayOrderId === where.gatewayOrderId)
+        );
         if (!payment) {
           throw new Error("Payment not found");
         }
         Object.assign(payment, data, { updatedAt: new Date() });
-        return this.payment.findUnique({ where, include });
+        return this.hydratePayment(payment, include);
       },
       updateMany: async ({ where, data }: any) => {
         const rows = this.store.payments.filter((item) => this.matches(item, where));
@@ -847,9 +860,15 @@ export class InMemoryPrismaService {
       create: async ({ data }: any) => {
         const payment = {
           id: this.id("payment"),
+          gatewayOrderId: null,
+          gatewayPaymentId: null,
+          gatewaySignature: null,
+          webhookPayload: null,
+          errorReason: null,
           amountCollected: 0,
           collectionTimestamp: null,
           paymentProofReference: null,
+          adminVerificationStatus: "PENDING",
           createdAt: new Date(),
           updatedAt: new Date(),
           reconciledAt: null,
@@ -1339,10 +1358,10 @@ export class InMemoryPrismaService {
       );
     }
     if (include?.payments) {
-      hydrated.payments = this.sort(
-        this.store.payments.filter((item) => item.orderId === order.id),
-        include.payments.orderBy
-      ).slice(0, include.payments.take ?? Number.POSITIVE_INFINITY);
+      const paymentRows = this.store.payments.filter((item) => item.orderId === order.id);
+      const paymentInclude = typeof include.payments === "object" ? include.payments : {};
+      hydrated.payments = this.sort(paymentRows, paymentInclude.orderBy)
+        .slice(0, paymentInclude.take ?? Number.POSITIVE_INFINITY);
     }
     if (include?.collections) {
       hydrated.collections = this.store.paymentCollections.filter((item) => item.orderId === order.id);
@@ -1423,6 +1442,22 @@ export class InMemoryPrismaService {
       hydrated.payment = this.store.payments.find((item) => item.id === alert.paymentId) ?? null;
     }
     return hydrated;
+  }
+
+  private hydratePayment(payment: Record<string, any>, include: any) {
+    return {
+      ...payment,
+      ...(include?.order
+        ? { order: this.store.orders.find((order) => order.id === payment.orderId) }
+        : {}),
+      ...(include?.reconciliationEvents
+        ? {
+            reconciliationEvents: this.store.paymentReconciliationEvents.filter(
+              (event) => event.paymentId === payment.id
+            )
+          }
+        : {})
+    };
   }
 
   private withUserRoles(user: Record<string, any>) {

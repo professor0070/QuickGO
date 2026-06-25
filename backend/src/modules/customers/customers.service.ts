@@ -1,9 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../common/prisma.service";
 import { AddAddressDto, UpdateCustomerProfileDto } from "./customer.dto";
 
 @Injectable()
 export class CustomersService {
+  private readonly logger = new Logger(CustomersService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getOrCreateCustomer(userId: string) {
@@ -40,21 +42,29 @@ export class CustomersService {
       where: { customerId: customer.id }
     });
 
-    return this.prisma.address.create({
-      data: {
-        customerId: customer.id,
-        receiverName: dto.receiver_name,
-        receiverPhone: dto.receiver_phone,
-        line1: dto.line1,
-        line2: dto.line2,
-        city: dto.city,
-        state: dto.state,
-        pincode: dto.pincode,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
-        isDefault: existingCount === 0
-      }
-    });
+    this.logger.log(`Creating address for customer=${customer.id}`);
+    try {
+      const created = await this.prisma.address.create({
+        data: {
+          customerId: customer.id,
+          receiverName: dto.receiver_name,
+          receiverPhone: dto.receiver_phone,
+          line1: dto.line1,
+          line2: dto.line2,
+          city: dto.city,
+          state: dto.state,
+          pincode: dto.pincode,
+          latitude: dto.latitude ?? null,
+          longitude: dto.longitude ?? null,
+          isDefault: existingCount === 0
+        }
+      });
+      this.logger.log(`Address created id=${created.id} for customer=${customer.id}`);
+      return created;
+    } catch (err) {
+      this.logger.error(`Error creating address for customer=${customer.id}: ${err}`);
+      throw err;
+    }
   }
 
   async listAddresses(userId: string) {

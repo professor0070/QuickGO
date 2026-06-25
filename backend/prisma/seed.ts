@@ -52,11 +52,12 @@ async function main() {
     }
   });
 
+  // Store seed phones in normalized +91XXXXXXXXXX format to avoid duplicates
   const superAdmin = await prisma.user.upsert({
-    where: { phone: "9999999999" },
+    where: { phone: "+919999999999" },
     update: {},
     create: {
-      phone: "9999999999",
+      phone: "+919999999999",
       status: "ACTIVE"
     }
   });
@@ -75,6 +76,30 @@ async function main() {
     update: {},
     create: {
       userId: superAdmin.id,
+      roleId: superAdminRole.id
+    }
+  });
+
+  // Developer/admin seed - use normalized format +91XXXXXXXXXX. This is seed-only.
+  const devAdmin = await prisma.user.upsert({
+    where: { phone: "+917033475405" },
+    update: {},
+    create: {
+      phone: "+917033475405",
+      status: "ACTIVE"
+    }
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: devAdmin.id,
+        roleId: superAdminRole.id
+      }
+    },
+    update: {},
+    create: {
+      userId: devAdmin.id,
       roleId: superAdminRole.id
     }
   });

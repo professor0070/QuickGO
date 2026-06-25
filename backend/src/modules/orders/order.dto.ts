@@ -4,8 +4,8 @@ export class CreateOrderDto {
   @IsString()
   address_id!: string;
 
-  @IsIn(["COD", "UPI_ON_DELIVERY"])
-  payment_method!: "COD" | "UPI_ON_DELIVERY";
+  @IsIn(["COD", "UPI_ON_DELIVERY", "RAZORPAY", "UPI"])
+  payment_method!: "COD" | "UPI_ON_DELIVERY" | "RAZORPAY" | "UPI";
 
   @IsOptional()
   @IsString()

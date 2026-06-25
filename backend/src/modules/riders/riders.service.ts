@@ -339,26 +339,93 @@ export class RidersService {
     const rider = await this.riderForUser(userId);
     const order = await this.assignedOrderDetail(userId, orderId);
     assertOrderTransition(order.status as OrderStatus, "DELIVERED");
-    return this.prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status: "DELIVERED",
-        deliveredAt: new Date(),
-        history: {
-          create: {
-            fromStatus: order.status,
-            toStatus: "DELIVERED",
-            actorId: userId,
-            reason: "Rider delivered order"
+
+    const isPrepaid = order.paymentStatus === "SUCCESS";
+    const targetStatus = isPrepaid ? "COMPLETED" : "DELIVERED";
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: targetStatus,
+          deliveredAt: new Date(),
+          ...(isPrepaid ? { completedAt: new Date() } : {}),
+          history: {
+            create: [
+              {
+                fromStatus: order.status,
+                toStatus: "DELIVERED",
+                actorId: userId,
+                reason: "Rider delivered order"
+              },
+              ...(isPrepaid ? [{
+                fromStatus: "DELIVERED" as OrderStatus,
+                toStatus: "COMPLETED" as OrderStatus,
+                actorId: userId,
+                reason: "Prepaid order completed automatically on delivery"
+              }] : [])
+            ]
+          },
+          deliveryAssignments: {
+            updateMany: {
+              where: { riderId: rider.id, isActive: true },
+              data: { deliveredAt: new Date() }
+            }
           }
-        },
-        deliveryAssignments: {
-          updateMany: {
-            where: { riderId: rider.id, isActive: true },
-            data: { deliveredAt: new Date() }
+        }
+      });
+
+      if (isPrepaid) {
+        const vendorPayoutAmount = Math.max(
+          Number(order.itemTotal) - Number(order.commissionAmount),
+          0
+        );
+        const vendorNote = `Generated after payment reconciliation for order ${order.orderNumber}`;
+        const existingVendorPayout = await tx.payout.findFirst({
+          where: {
+            payeeType: "VENDOR",
+            vendorId: order.vendorId,
+            adjustmentNote: vendorNote
+          }
+        });
+        if (!existingVendorPayout) {
+          await tx.payout.create({
+            data: {
+              payeeType: "VENDOR",
+              vendorId: order.vendorId,
+              status: "PAYOUT_PENDING",
+              amount: vendorPayoutAmount,
+              adjustmentNote: vendorNote,
+              approvedBy: userId
+            }
+          });
+        }
+
+        if (order.riderId) {
+          const riderNote = `Generated after payment reconciliation for order ${order.orderNumber}`;
+          const existingRiderPayout = await tx.payout.findFirst({
+            where: {
+              payeeType: "RIDER",
+              riderId: order.riderId,
+              adjustmentNote: riderNote
+            }
+          });
+          if (!existingRiderPayout) {
+            await tx.payout.create({
+              data: {
+                payeeType: "RIDER",
+                riderId: order.riderId,
+                status: "PAYOUT_PENDING",
+                amount: Number(order.deliveryFee),
+                adjustmentNote: riderNote,
+                approvedBy: userId
+              }
+            });
           }
         }
       }
+
+      return updatedOrder;
     });
   }
 

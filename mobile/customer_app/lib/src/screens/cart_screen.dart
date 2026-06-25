@@ -10,15 +10,18 @@ class CartScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String itemId, int quantity) async {
     try {
       final client = ref.read(apiClientProvider);
+      if (quantity < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quantity must be positive.')));
+        return;
+      }
       await client.patchMap('/cart/items/$itemId', {
         'quantity': quantity,
       });
       ref.invalidate(cartProvider);
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update cart: $e')),
-      );
+      final msg = e.toString().contains('Network') ? 'Network error. Check your connection.' : 'Something went wrong. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 

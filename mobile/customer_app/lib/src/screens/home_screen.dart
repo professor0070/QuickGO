@@ -268,7 +268,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (err, _) => Text('Error loading vendors: $err'),
+                error: (err, _) => const Text('Something went wrong. Please try again.'),
               ),
             ],
           ),

@@ -19,6 +19,20 @@ const navItems = [
   "Settings"
 ];
 
+const normalizePhone = (input: string): string => {
+  if (!input) return "";
+  const digits = input.replace(/\D/g, "");
+  let ten = digits;
+  if (digits.length === 12 && digits.startsWith("91")) {
+    ten = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith("0")) {
+    ten = digits.slice(1);
+  } else if (digits.length === 10) {
+    ten = digits;
+  }
+  return `+91${ten}`;
+};
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [apiUrl, setApiUrl] = useState("http://localhost:3000/api/v1");
@@ -44,6 +58,10 @@ export default function AdminDashboard() {
   const [serviceZones, setServiceZones] = useState<any[]>([]);
   const [payouts, setPayouts] = useState<any[]>([]);
   const [report, setReport] = useState<any>(null);
+  const [reconciliationAlerts, setReconciliationAlerts] = useState<any[]>([]);
+  const [reconciliationSummary, setReconciliationSummary] = useState<any>(null);
+  const [allPayments, setAllPayments] = useState<any[]>([]);
+  const [payoutFilter, setPayoutFilter] = useState<string>("ALL");
 
   // Action / Form states
   const [showVendorModal, setShowVendorModal] = useState(false);
@@ -107,12 +125,32 @@ export default function AdminDashboard() {
 
   // Local storage for config & check token
   useEffect(() => {
+    let activeUrl = "http://localhost:3000/api/v1";
+    const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+    const isLocalhost = !hostname || hostname === "localhost" || hostname === "127.0.0.1";
     const savedUrl = localStorage.getItem("quickgo_api_url");
+
+    if (!isLocalhost) {
+      if (!savedUrl || savedUrl.includes("localhost") || savedUrl.includes("127.0.0.1")) {
+        activeUrl = `http://${hostname}:3000/api/v1`;
+        localStorage.setItem("quickgo_api_url", activeUrl);
+      } else {
+        activeUrl = savedUrl;
+      }
+    } else {
+      if (savedUrl) {
+        activeUrl = savedUrl;
+      } else {
+        activeUrl = "http://localhost:3000/api/v1";
+      }
+    }
+
+    setApiUrl(activeUrl);
+
     const savedToken = localStorage.getItem("quickgo_auth_token");
-    if (savedUrl) setApiUrl(savedUrl);
     if (savedToken) {
       setAuthToken(savedToken);
-      fetch(`${savedUrl || apiUrl}/auth/me`, {
+      fetch(`${activeUrl}/auth/me`, {
         headers: { Authorization: `Bearer ${savedToken}` }
       })
         .then(res => res.json())
@@ -137,10 +175,12 @@ export default function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
+      const normalizedPhone = normalizePhone(loginPhone);
+      setLoginPhone(normalizedPhone);
       const res = await fetch(`${apiUrl}/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: loginPhone, purpose: "LOGIN" })
+        body: JSON.stringify({ phone: normalizedPhone, purpose: "LOGIN" })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Failed to send OTP");
@@ -158,10 +198,12 @@ export default function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
+      const normalizedPhone = normalizePhone(loginPhone);
+      setLoginPhone(normalizedPhone);
       const res = await fetch(`${apiUrl}/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: loginPhone, otp: loginOtp })
+        body: JSON.stringify({ phone: normalizedPhone, otp: loginOtp })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Verification failed");
@@ -255,11 +297,23 @@ export default function AdminDashboard() {
         const p = await fetchWithAuth("/admin/products");
         setProducts(p || []);
       } else if (activeTab === "Payments & Reconciliation") {
-        const o = await fetchWithAuth("/admin/orders");
+        const [o, alerts, summary, payments] = await Promise.all([
+          fetchWithAuth("/admin/orders"),
+          fetchWithAuth("/admin/reconciliation/alerts"),
+          fetchWithAuth("/admin/reconciliation/summary"),
+          fetchWithAuth("/admin/payments")
+        ]);
         setOrders(o || []);
+        setReconciliationAlerts(alerts || []);
+        setReconciliationSummary(summary || null);
+        setAllPayments(payments || []);
       } else if (activeTab === "Settlements/Payouts") {
-        const p = await fetchWithAuth("/admin/payouts");
+        const [p, summary] = await Promise.all([
+          fetchWithAuth("/admin/payouts"),
+          fetchWithAuth("/admin/reconciliation/summary")
+        ]);
         setPayouts(p || []);
+        setReconciliationSummary(summary || null);
       } else if (activeTab === "Support Tickets") {
         const s = await fetchWithAuth("/admin/support-tickets");
         setSupportTickets(s || []);
@@ -647,9 +701,14 @@ export default function AdminDashboard() {
                 <label className="block text-sm font-medium text-slate-300">Admin Phone Number</label>
                 <input
                   type="tel"
-                  placeholder="9999999999"
+                  placeholder="+919999999999"
                   value={loginPhone}
                   onChange={(e) => setLoginPhone(e.target.value)}
+                  onBlur={() => {
+                    if (loginPhone) {
+                      setLoginPhone(normalizePhone(loginPhone));
+                    }
+                  }}
                   className="mt-1 block w-full rounded-lg bg-slate-900 border border-slate-700 text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
@@ -701,7 +760,11 @@ export default function AdminDashboard() {
               <input
                 type="text"
                 value={apiUrl}
-                onChange={(e) => setApiUrl(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setApiUrl(val);
+                  localStorage.setItem("quickgo_api_url", val);
+                }}
                 className="mt-1 block w-full rounded bg-slate-900 border border-slate-700 text-slate-300 px-3 py-1.5 text-xs font-mono focus:outline-none"
               />
             </div>
@@ -1243,114 +1306,346 @@ export default function AdminDashboard() {
               )}
 
               {activeTab === "Payments & Reconciliation" && (
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <div className="border-b border-slate-200 px-5 py-4">
-                    <h2 className="text-lg font-bold">Pending Collections</h2>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                        <tr>
-                          <th className="px-5 py-3">Order</th>
-                          <th className="px-5 py-3">Method</th>
-                          <th className="px-5 py-3">Expected</th>
-                          <th className="px-5 py-3">Collected</th>
-                          <th className="px-5 py-3">Collector</th>
-                          <th className="px-5 py-3">Status</th>
-                          <th className="px-5 py-3">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {pendingPayments.length === 0 ? (
+                <div className="space-y-6">
+                  {/* Summary Cards */}
+                  {reconciliationSummary && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {[
+                        { label: "Total Expected", value: `₹${money(reconciliationSummary.payments?.total_expected)}`, color: "bg-blue-50 text-blue-700 border-blue-200" },
+                        { label: "Total Collected", value: `₹${money(reconciliationSummary.payments?.total_collected)}`, color: "bg-green-50 text-green-700 border-green-200" },
+                        { label: "Pending", value: reconciliationSummary.payments?.pending_count ?? 0, color: "bg-amber-50 text-amber-700 border-amber-200" },
+                        { label: "Reconciled", value: reconciliationSummary.payments?.reconciled_count ?? 0, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                        { label: "Mismatched", value: reconciliationSummary.payments?.mismatch_count ?? 0, color: reconciliationSummary.payments?.mismatch_count > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-50 text-slate-600 border-slate-200" },
+                        { label: "Open Alerts", value: reconciliationSummary.alerts?.open_total ?? 0, color: reconciliationSummary.alerts?.open_total > 0 ? "bg-orange-50 text-orange-700 border-orange-200" : "bg-slate-50 text-slate-600 border-slate-200" }
+                      ].map((card) => (
+                        <div key={card.label} className={`rounded-xl border p-4 ${card.color} shadow-sm`}>
+                          <div className="text-xs font-medium opacity-75">{card.label}</div>
+                          <div className="mt-1 text-2xl font-bold">{card.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reconciliation Alerts */}
+                  {reconciliationAlerts.length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <div className="border-b border-slate-200 px-5 py-4 flex items-center gap-3">
+                        <h2 className="text-lg font-bold">Reconciliation Alerts</h2>
+                        <span className="rounded-full bg-orange-100 text-orange-700 px-2.5 py-0.5 text-xs font-bold">{reconciliationAlerts.length} open</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-left text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                              <th className="px-5 py-3">Severity</th>
+                              <th className="px-5 py-3">Type</th>
+                              <th className="px-5 py-3">Order</th>
+                              <th className="px-5 py-3">Expected</th>
+                              <th className="px-5 py-3">Collected</th>
+                              <th className="px-5 py-3">Message</th>
+                              <th className="px-5 py-3">Created</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {reconciliationAlerts.map((alert: any) => (
+                              <tr key={alert.id} className="hover:bg-slate-50">
+                                <td className="px-5 py-3">
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${
+                                    alert.severity === "URGENT" ? "bg-red-100 text-red-800" :
+                                    alert.severity === "HIGH" ? "bg-orange-100 text-orange-800" :
+                                    "bg-yellow-100 text-yellow-800"
+                                  }`}>{alert.severity}</span>
+                                </td>
+                                <td className="px-5 py-3 font-mono text-xs">{alert.type}</td>
+                                <td className="px-5 py-3 font-semibold">{alert.order?.orderNumber || "—"}</td>
+                                <td className="px-5 py-3">₹{money(alert.expectedAmount)}</td>
+                                <td className="px-5 py-3">₹{money(alert.collectedAmount)}</td>
+                                <td className="px-5 py-3 text-slate-600 max-w-xs truncate">{alert.message}</td>
+                                <td className="px-5 py-3 text-xs text-slate-500">{new Date(alert.createdAt).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pending Collections */}
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <h2 className="text-lg font-bold">Pending Collections</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
                           <tr>
-                            <td className="px-5 py-8 text-center text-slate-500" colSpan={7}>
-                              No payment collection tasks pending review.
-                            </td>
+                            <th className="px-5 py-3">Order</th>
+                            <th className="px-5 py-3">Method</th>
+                            <th className="px-5 py-3">Expected</th>
+                            <th className="px-5 py-3">Collected</th>
+                            <th className="px-5 py-3">Collector</th>
+                            <th className="px-5 py-3">Status</th>
+                            <th className="px-5 py-3">Actions</th>
                           </tr>
-                        ) : (
-                          pendingPayments.map(({ order, payment }) => (
-                            <tr key={payment.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-3 font-semibold">{order.orderNumber}</td>
-                              <td className="px-5 py-3">{payment.paymentMethodActual || payment.paymentMethodRequested || payment.method}</td>
-                              <td className="px-5 py-3">Rs {money(payment.amount)}</td>
-                              <td className="px-5 py-3">Rs {money(payment.amountCollected)}</td>
-                              <td className="px-5 py-3">{payment.collectorType || "Pending"}</td>
-                              <td className="px-5 py-3">{payment.status}</td>
-                              <td className="px-5 py-3">
-                                <button
-                                  onClick={() => {
-                                    setShowReconcileModal(payment.id);
-                                    setReconcileData({
-                                      status: "VERIFIED",
-                                      amount_collected: Number(payment.amountCollected || payment.amount || 0),
-                                      reason: ""
-                                    });
-                                  }}
-                                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-xs font-semibold"
-                                >
-                                  Reconcile
-                                </button>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {pendingPayments.length === 0 ? (
+                            <tr>
+                              <td className="px-5 py-8 text-center text-slate-500" colSpan={7}>
+                                No payment collection tasks pending review.
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                          ) : (
+                            pendingPayments.map(({ order, payment }) => (
+                              <tr key={payment.id} className="hover:bg-slate-50">
+                                <td className="px-5 py-3 font-semibold">{order.orderNumber}</td>
+                                <td className="px-5 py-3">{payment.paymentMethodActual || payment.paymentMethodRequested || payment.method}</td>
+                                <td className="px-5 py-3">₹{money(payment.amount)}</td>
+                                <td className="px-5 py-3">₹{money(payment.amountCollected)}</td>
+                                <td className="px-5 py-3">{payment.collectorType || "Pending"}</td>
+                                <td className="px-5 py-3">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                                    payment.status === "COLLECTED_UNVERIFIED" ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                                    payment.status === "SHORT_COLLECTED" || payment.status === "OVER_COLLECTED" ? "bg-red-50 text-red-700 border border-red-200" :
+                                    payment.status === "DISPUTED" ? "bg-red-100 text-red-800 border border-red-300" :
+                                    "bg-slate-100 text-slate-600"
+                                  }`}>{payment.status}</span>
+                                </td>
+                                <td className="px-5 py-3">
+                                  <button
+                                    onClick={() => {
+                                      setShowReconcileModal(payment.id);
+                                      setReconcileData({
+                                        status: "VERIFIED",
+                                        amount_collected: Number(payment.amountCollected || payment.amount || 0),
+                                        reason: ""
+                                      });
+                                    }}
+                                    className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-xs font-semibold"
+                                  >
+                                    Reconcile
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* All Payments Table */}
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <h2 className="text-lg font-bold">All Payments</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                          <tr>
+                            <th className="px-4 py-3">Order</th>
+                            <th className="px-4 py-3">Vendor</th>
+                            <th className="px-4 py-3">Method</th>
+                            <th className="px-4 py-3">Amount</th>
+                            <th className="px-4 py-3">Collected</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">Verification</th>
+                            <th className="px-4 py-3">Gateway</th>
+                            <th className="px-4 py-3">Date</th>
+                            <th className="px-4 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {allPayments.length === 0 ? (
+                            <tr>
+                              <td className="px-4 py-8 text-center text-slate-500" colSpan={10}>
+                                No payment records found.
+                              </td>
+                            </tr>
+                          ) : (
+                            allPayments.map((payment: any) => {
+                              const isTerminal = ["VERIFIED", "SETTLED", "RECONCILED", "SUCCESS", "NOT_REQUIRED", "FAILED", "REFUNDED"].includes(payment.status);
+                              const isMismatch = ["SHORT_COLLECTED", "OVER_COLLECTED"].includes(payment.status);
+                              const hasOpenAlerts = payment.reconciliationAlerts?.length > 0;
+                              return (
+                                <tr key={payment.id} className={`hover:bg-slate-50 ${isMismatch ? "bg-red-50/40" : ""} ${hasOpenAlerts ? "border-l-2 border-l-orange-400" : ""}`}>
+                                  <td className="px-4 py-3 font-semibold">{payment.order?.orderNumber || "—"}</td>
+                                  <td className="px-4 py-3 text-xs">{payment.order?.vendor?.shopName || "—"}</td>
+                                  <td className="px-4 py-3">
+                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                      payment.method === "RAZORPAY" ? "bg-blue-50 text-blue-700" :
+                                      payment.method === "UPI" ? "bg-purple-50 text-purple-700" :
+                                      "bg-slate-100 text-slate-600"
+                                    }`}>{payment.paymentMethodActual || payment.method}</span>
+                                  </td>
+                                  <td className="px-4 py-3">₹{money(payment.amount)}</td>
+                                  <td className={`px-4 py-3 ${isMismatch ? "text-red-700 font-bold" : ""}`}>₹{money(payment.amountCollected)}</td>
+                                  <td className="px-4 py-3">
+                                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                                      payment.status === "SUCCESS" || payment.status === "VERIFIED" || payment.status === "SETTLED" ? "bg-green-50 text-green-700 border border-green-200" :
+                                      payment.status === "FAILED" ? "bg-red-50 text-red-700 border border-red-200" :
+                                      payment.status === "DISPUTED" ? "bg-red-100 text-red-800 border border-red-300" :
+                                      isMismatch ? "bg-orange-50 text-orange-700 border border-orange-200" :
+                                      payment.status === "PROCESSING" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                                      "bg-amber-50 text-amber-700 border border-amber-200"
+                                    }`}>{payment.status}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                      payment.adminVerificationStatus === "VERIFIED" ? "bg-green-50 text-green-700" :
+                                      payment.adminVerificationStatus === "REJECTED" ? "bg-red-50 text-red-700" :
+                                      "bg-slate-100 text-slate-500"
+                                    }`}>{payment.adminVerificationStatus}</span>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs font-mono text-slate-500">{payment.gatewayPaymentId ? payment.gatewayPaymentId.slice(0, 14) + "…" : "—"}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-500">{new Date(payment.createdAt).toLocaleString()}</td>
+                                  <td className="px-4 py-3">
+                                    {!isTerminal && (
+                                      <button
+                                        onClick={() => {
+                                          setShowReconcileModal(payment.id);
+                                          setReconcileData({
+                                            status: "VERIFIED",
+                                            amount_collected: Number(payment.amountCollected || payment.amount || 0),
+                                            reason: ""
+                                          });
+                                        }}
+                                        className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-xs font-semibold"
+                                      >
+                                        Reconcile
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
 
               {activeTab === "Settlements/Payouts" && (
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <div className="border-b border-slate-200 px-5 py-4">
-                    <h2 className="text-lg font-bold">Settlements & Payouts</h2>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                        <tr>
-                          <th className="px-5 py-3">Payee</th>
-                          <th className="px-5 py-3">Type</th>
-                          <th className="px-5 py-3">Amount</th>
-                          <th className="px-5 py-3">Status</th>
-                          <th className="px-5 py-3">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {pendingPayouts.length === 0 ? (
+                <div className="space-y-6">
+                  {/* Summary Cards */}
+                  {reconciliationSummary?.payouts && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      {[
+                        { label: "Vendor Payable", value: `₹${money(reconciliationSummary.payouts.vendor_payable_amount)}`, sub: `${reconciliationSummary.payouts.vendor_payable_count} pending`, color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+                        { label: "Rider Payable", value: `₹${money(reconciliationSummary.payouts.rider_payable_amount)}`, sub: `${reconciliationSummary.payouts.rider_payable_count} pending`, color: "bg-purple-50 text-purple-700 border-purple-200" },
+                        { label: "Vendor Paid", value: `₹${money(reconciliationSummary.payouts.vendor_paid_amount)}`, sub: `${reconciliationSummary.payouts.vendor_paid_count} completed`, color: "bg-green-50 text-green-700 border-green-200" },
+                        { label: "Rider Paid", value: `₹${money(reconciliationSummary.payouts.rider_paid_amount)}`, sub: `${reconciliationSummary.payouts.rider_paid_count} completed`, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                        { label: "On Hold", value: reconciliationSummary.payouts.hold_count, sub: "payouts held", color: reconciliationSummary.payouts.hold_count > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-50 text-slate-600 border-slate-200" }
+                      ].map((card) => (
+                        <div key={card.label} className={`rounded-xl border p-4 ${card.color} shadow-sm`}>
+                          <div className="text-xs font-medium opacity-75">{card.label}</div>
+                          <div className="mt-1 text-2xl font-bold">{card.value}</div>
+                          <div className="mt-0.5 text-xs opacity-60">{card.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Payouts Table */}
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <h2 className="text-lg font-bold">Settlements & Payouts</h2>
+                      <div className="flex gap-1">
+                        {["ALL", "PAYOUT_PENDING", "PAYOUT_PAID", "PAYOUT_HOLD", "PAYOUT_DISPUTED"].map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => setPayoutFilter(f)}
+                            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                              payoutFilter === f
+                                ? "bg-indigo-600 text-white shadow-sm"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            {f === "ALL" ? "All" : f.replace("PAYOUT_", "").charAt(0) + f.replace("PAYOUT_", "").slice(1).toLowerCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
                           <tr>
-                            <td className="px-5 py-8 text-center text-slate-500" colSpan={5}>
-                              No pending payout records. Payouts are generated after payment reconciliation.
-                            </td>
+                            <th className="px-4 py-3">Payee</th>
+                            <th className="px-4 py-3">Type</th>
+                            <th className="px-4 py-3">Amount</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">Created</th>
+                            <th className="px-4 py-3">Approved By</th>
+                            <th className="px-4 py-3">Paid At</th>
+                            <th className="px-4 py-3">Notes</th>
+                            <th className="px-4 py-3">Actions</th>
                           </tr>
-                        ) : (
-                          pendingPayouts.map((payout) => (
-                            <tr key={payout.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-3 font-semibold">
-                                {payout.vendor?.shopName || payout.rider?.name || "Unknown"}
-                              </td>
-                              <td className="px-5 py-3">{payout.payeeType}</td>
-                              <td className="px-5 py-3">Rs {money(payout.amount)}</td>
-                              <td className="px-5 py-3">{payout.status}</td>
-                              <td className="px-5 py-3 flex gap-2">
-                                <button
-                                  onClick={() => handleUpdatePayout(payout.id, "PAYOUT_PAID")}
-                                  className="rounded bg-green-600 hover:bg-green-700 text-white px-2 py-1 text-xs font-semibold"
-                                >
-                                  Mark Paid
-                                </button>
-                                <button
-                                  onClick={() => handleUpdatePayout(payout.id, "PAYOUT_HOLD")}
-                                  className="rounded border border-amber-300 hover:bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700"
-                                >
-                                  Hold
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(() => {
+                            const filtered = payoutFilter === "ALL" ? payouts : payouts.filter((p: any) => p.status === payoutFilter);
+                            if (filtered.length === 0) {
+                              return (
+                                <tr>
+                                  <td className="px-4 py-8 text-center text-slate-500" colSpan={9}>
+                                    {payoutFilter === "ALL" ? "No payout records. Payouts are generated after payment reconciliation." : `No ${payoutFilter.replace("PAYOUT_", "").toLowerCase()} payouts.`}
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            return filtered.map((payout: any) => (
+                              <tr key={payout.id} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 font-semibold">
+                                  {payout.vendor?.shopName || payout.rider?.name || "Unknown"}
+                                  <div className="text-xs text-slate-400 font-normal">{payout.vendor?.ownerPhone || payout.rider?.phone || ""}</div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                    payout.payeeType === "VENDOR" ? "bg-indigo-50 text-indigo-700" : "bg-purple-50 text-purple-700"
+                                  }`}>{payout.payeeType}</span>
+                                </td>
+                                <td className="px-4 py-3 font-semibold">₹{money(payout.amount)}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                                    payout.status === "PAYOUT_PAID" ? "bg-green-50 text-green-700 border border-green-200" :
+                                    payout.status === "PAYOUT_PENDING" ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                                    payout.status === "PAYOUT_HOLD" ? "bg-orange-50 text-orange-700 border border-orange-200" :
+                                    payout.status === "PAYOUT_DISPUTED" ? "bg-red-50 text-red-700 border border-red-200" :
+                                    "bg-slate-100 text-slate-600"
+                                  }`}>{payout.status.replace("PAYOUT_", "")}</span>
+                                </td>
+                                <td className="px-4 py-3 text-xs text-slate-500">{new Date(payout.createdAt).toLocaleString()}</td>
+                                <td className="px-4 py-3 text-xs text-slate-500">{payout.approvedBy || "—"}</td>
+                                <td className="px-4 py-3 text-xs text-slate-500">{payout.paidAt ? new Date(payout.paidAt).toLocaleString() : "—"}</td>
+                                <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate">{payout.adjustmentNote || "—"}</td>
+                                <td className="px-4 py-3">
+                                  {payout.status !== "PAYOUT_PAID" && (
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={() => handleUpdatePayout(payout.id, "PAYOUT_PAID")}
+                                        className="rounded bg-green-600 hover:bg-green-700 text-white px-2 py-1 text-xs font-semibold"
+                                      >
+                                        Pay
+                                      </button>
+                                      {payout.status !== "PAYOUT_HOLD" && (
+                                        <button
+                                          onClick={() => handleUpdatePayout(payout.id, "PAYOUT_HOLD")}
+                                          className="rounded border border-amber-300 hover:bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700"
+                                        >
+                                          Hold
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            ));
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}

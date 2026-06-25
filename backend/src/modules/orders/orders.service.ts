@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PaymentMethod } from "@prisma/client";
 import { API_ERROR_CODES } from "../../common/constants";
 import { CustomersService } from "../customers/customers.service";
@@ -13,7 +14,8 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customers: CustomersService,
-    private readonly serviceZones: ServiceZonesService
+    private readonly serviceZones: ServiceZonesService,
+    private readonly config: ConfigService
   ) {}
 
   async createFromActiveCart(userId: string, dto: CreateOrderDto) {
@@ -131,6 +133,16 @@ export class OrdersService {
     const commissionAmount = Number(((itemTotal * commissionRateSnapshot) / 100).toFixed(2));
     const orderNumber = `QG-${Date.now()}`;
     const paymentMethod = dto.payment_method as PaymentMethod;
+    if (paymentMethod === "COD" && !this.config.get<boolean>("COD_ON_DELIVERY_ENABLED")) {
+      throw new BadRequestException("COD payment method is disabled");
+    }
+    if (paymentMethod === "UPI_ON_DELIVERY" && !this.config.get<boolean>("UPI_ON_DELIVERY_ENABLED")) {
+      throw new BadRequestException("UPI on Delivery payment method is disabled");
+    }
+    const isDigital = paymentMethod === "RAZORPAY" || paymentMethod === "UPI";
+    const initialOrderStatus = isDigital ? "PAYMENT_PENDING" : "PLACED";
+    const initialPaymentStatus = isDigital ? "PENDING" : "COLLECTION_PENDING";
+    const collectionModel = isDigital ? "DIGITAL" : "COD_OR_UPI_ON_DELIVERY";
 
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
@@ -139,9 +151,9 @@ export class OrdersService {
           customerId: customer.id,
           vendorId: vendor.id,
           serviceZoneId: vendor.serviceZoneId,
-          status: "PLACED",
+          status: initialOrderStatus,
           paymentMethod,
-          paymentStatus: "COLLECTION_PENDING",
+          paymentStatus: initialPaymentStatus,
           itemTotal,
           deliveryFee,
           platformFee,
@@ -173,8 +185,8 @@ export class OrdersService {
           },
           paymentSnapshot: {
             requestedMethod: paymentMethod,
-            status: "COLLECTION_PENDING",
-            collectionModel: "COD_OR_UPI_ON_DELIVERY"
+            status: initialPaymentStatus,
+            collectionModel
           },
           items: {
             create: cart.items.map((item) => ({
@@ -197,7 +209,7 @@ export class OrdersService {
           },
           history: {
             create: {
-              toStatus: "PLACED",
+              toStatus: initialOrderStatus,
               reason: dto.customer_note
             }
           },
@@ -205,7 +217,7 @@ export class OrdersService {
             create: {
               method: paymentMethod,
               paymentMethodRequested: paymentMethod,
-              status: "COLLECTION_PENDING",
+              status: initialPaymentStatus,
               adminVerificationStatus: "PENDING",
               amount: totalAmount
             }

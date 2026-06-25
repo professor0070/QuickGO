@@ -20,6 +20,7 @@ dependencies:
     path: ../packages/shared_notifications
   quickgo_shared_ui:
     path: ../packages/shared_ui
+  shared_preferences: ^2.0.15
 dev_dependencies:
   flutter_test:
     sdk: flutter

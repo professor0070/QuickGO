@@ -1154,6 +1154,147 @@ export class AdminService {
     return updated;
   }
 
+  async reconciliationSummary() {
+    const [
+      paymentAgg,
+      pendingCount,
+      reconciledCount,
+      mismatchCount,
+      disputedCount,
+      successCount,
+      alertsByType,
+      alertsBySeverity,
+      payoutAgg,
+      vendorPayableAgg,
+      riderPayableAgg,
+      paidVendorAgg,
+      paidRiderAgg,
+      holdCount
+    ] = await Promise.all([
+      this.prisma.payment.aggregate({
+        _sum: { amount: true, amountCollected: true },
+        _count: { id: true }
+      }),
+      this.prisma.payment.count({
+        where: { status: { in: ["PENDING", "PENDING_COLLECTION", "COLLECTION_PENDING", "COLLECTED_UNVERIFIED"] } }
+      }),
+      this.prisma.payment.count({
+        where: { status: { in: ["VERIFIED", "SETTLED", "RECONCILED"] } }
+      }),
+      this.prisma.payment.count({
+        where: { status: { in: ["SHORT_COLLECTED", "OVER_COLLECTED"] } }
+      }),
+      this.prisma.payment.count({
+        where: { status: "DISPUTED" }
+      }),
+      this.prisma.payment.count({
+        where: { status: "SUCCESS" }
+      }),
+      this.prisma.paymentReconciliationAlert.groupBy({
+        by: ["type"],
+        where: { status: "OPEN" },
+        _count: { id: true }
+      }),
+      this.prisma.paymentReconciliationAlert.groupBy({
+        by: ["severity"],
+        where: { status: "OPEN" },
+        _count: { id: true }
+      }),
+      this.prisma.payout.aggregate({
+        _sum: { amount: true },
+        _count: { id: true }
+      }),
+      this.prisma.payout.aggregate({
+        where: { payeeType: "VENDOR", status: { in: ["PAYOUT_PENDING", "PAYOUT_PARTIAL"] } },
+        _sum: { amount: true },
+        _count: { id: true }
+      }),
+      this.prisma.payout.aggregate({
+        where: { payeeType: "RIDER", status: { in: ["PAYOUT_PENDING", "PAYOUT_PARTIAL"] } },
+        _sum: { amount: true },
+        _count: { id: true }
+      }),
+      this.prisma.payout.aggregate({
+        where: { payeeType: "VENDOR", status: "PAYOUT_PAID" },
+        _sum: { amount: true },
+        _count: { id: true }
+      }),
+      this.prisma.payout.aggregate({
+        where: { payeeType: "RIDER", status: "PAYOUT_PAID" },
+        _sum: { amount: true },
+        _count: { id: true }
+      }),
+      this.prisma.payout.count({
+        where: { status: "PAYOUT_HOLD" }
+      })
+    ]);
+
+    const alertTypeMap: Record<string, number> = {};
+    for (const row of alertsByType) {
+      alertTypeMap[row.type] = row._count.id;
+    }
+    const alertSeverityMap: Record<string, number> = {};
+    for (const row of alertsBySeverity) {
+      alertSeverityMap[row.severity] = row._count.id;
+    }
+
+    return {
+      payments: {
+        total_count: paymentAgg._count.id,
+        total_expected: Number(paymentAgg._sum.amount ?? 0),
+        total_collected: Number(paymentAgg._sum.amountCollected ?? 0),
+        pending_count: pendingCount,
+        reconciled_count: reconciledCount,
+        success_count: successCount,
+        mismatch_count: mismatchCount,
+        disputed_count: disputedCount
+      },
+      alerts: {
+        open_total: Object.values(alertTypeMap).reduce((s, n) => s + n, 0),
+        by_type: alertTypeMap,
+        by_severity: alertSeverityMap
+      },
+      payouts: {
+        total_amount: Number(payoutAgg._sum.amount ?? 0),
+        total_count: payoutAgg._count.id,
+        vendor_payable_amount: Number(vendorPayableAgg._sum.amount ?? 0),
+        vendor_payable_count: vendorPayableAgg._count.id,
+        rider_payable_amount: Number(riderPayableAgg._sum.amount ?? 0),
+        rider_payable_count: riderPayableAgg._count.id,
+        vendor_paid_amount: Number(paidVendorAgg._sum.amount ?? 0),
+        vendor_paid_count: paidVendorAgg._count.id,
+        rider_paid_amount: Number(paidRiderAgg._sum.amount ?? 0),
+        rider_paid_count: paidRiderAgg._count.id,
+        hold_count: holdCount
+      }
+    };
+  }
+
+  allPayments() {
+    return this.prisma.payment.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            paymentStatus: true,
+            totalAmount: true,
+            itemTotal: true,
+            deliveryFee: true,
+            commissionAmount: true,
+            paymentMethod: true,
+            vendor: { select: { id: true, shopName: true } }
+          }
+        },
+        reconciliationEvents: { orderBy: { createdAt: "desc" }, take: 5 },
+        reconciliationAlerts: { where: { status: "OPEN" } }
+      },
+      take: 200
+    });
+  }
+
   auditLogs() {
     return this.prisma.auditLog.findMany({
       orderBy: { createdAt: "desc" },

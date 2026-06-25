@@ -67,6 +67,8 @@ enum OrderStatus {
 enum PaymentMethod {
   COD
   UPI_ON_DELIVERY
+  UPI
+  RAZORPAY
 }
 
 enum PaymentStatus {
@@ -85,6 +87,8 @@ enum PaymentStatus {
   FAILED
   REFUND_PENDING
   REFUNDED
+  SUCCESS
+  PROCESSING
 }
 
 enum CollectorType {
@@ -635,6 +639,11 @@ model Payment {
   amountCollected         Decimal                      @default(0) @db.Decimal(10, 2)
   collectionTimestamp     DateTime?
   paymentProofReference   String?
+  gatewayOrderId          String?                      @unique
+  gatewayPaymentId        String?
+  gatewaySignature        String?
+  webhookPayload          Json?
+  errorReason             String?
   createdAt               DateTime                     @default(now())
   updatedAt               DateTime                     @updatedAt
   reconciledAt            DateTime?

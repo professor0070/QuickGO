@@ -16,11 +16,21 @@ const notificationEvents: DomainEventName[] = [
   "vendor.order_ready_for_pickup",
   "delivery.rider_assigned",
   "delivery.rider_reassigned",
+  "delivery.rider_arrived",
   "delivery.picked_up",
   "delivery.delivered",
   "payment.collected",
-  "support.ticket_created"
+  "support.ticket_created",
+  "support.ticket_updated",
+  "admin.sla_breach_detected",
+  "admin.reconciliation_alert_created"
 ];
+
+type NotificationMessage = {
+  userIds: string[];
+  title: string;
+  body: string;
+};
 
 @Injectable()
 export class NotificationEventHandler implements OnModuleInit, OnModuleDestroy {
@@ -37,22 +47,24 @@ export class NotificationEventHandler implements OnModuleInit, OnModuleDestroy {
     for (const eventName of notificationEvents) {
       this.registrations.push(
         this.eventBus.on(eventName, async (event) => {
-          const message = await this.messageForEvent(event);
-          if (!message) {
+          const messages = await this.messagesForEvent(event);
+          if (!messages || messages.length === 0) {
             this.logger.log(`notification_skipped:${event.name} event=${event.id}`);
             return;
           }
 
-          await this.notifications.createForUsers({
-            userIds: message.userIds,
-            title: message.title,
-            body: message.body,
-            data: {
-              eventId: event.id,
-              eventName: event.name,
-              payload: event.payload
-            }
-          });
+          for (const message of messages) {
+            await this.notifications.createForUsers({
+              userIds: message.userIds,
+              title: message.title,
+              body: message.body,
+              data: {
+                eventId: event.id,
+                eventName: event.name,
+                payload: event.payload
+              }
+            });
+          }
           this.logger.log(`notification_recorded:${event.name} event=${event.id}`);
         })
       );
@@ -65,94 +77,271 @@ export class NotificationEventHandler implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async messageForEvent(event: DomainEvent): Promise<
-    | {
-        userIds: string[];
-        title: string;
-        body: string;
-      }
-    | undefined
-  > {
+  private async messagesForEvent(event: DomainEvent): Promise<NotificationMessage[] | undefined> {
     const payload = event.payload as Record<string, unknown>;
+    const messages: NotificationMessage[] = [];
+
     if (typeof payload["orderId"] === "string") {
       const orderId = payload["orderId"];
       const audience = await this.orderAudience(orderId);
+      const orderNum = String(payload["orderNumber"] ?? orderId);
+
       switch (event.name) {
         case "order.placed":
-          return {
-            userIds: [...audience.vendorUserIds, ...audience.adminUserIds],
-            title: "New order placed",
-            body: `Order ${String(payload["orderNumber"] ?? orderId)} needs vendor action`
-          };
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order placed successfully",
+              body: `Your order #${orderNum} has been received and is awaiting vendor confirmation.`
+            });
+          }
+          if (audience.vendorUserIds.length > 0) {
+            messages.push({
+              userIds: audience.vendorUserIds,
+              title: "New order received",
+              body: `Order #${orderNum} needs vendor acceptance.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "New Order placed",
+              body: `Order #${orderNum} has been placed.`
+            });
+          }
+          return messages;
+
         case "order.cancelled":
-          return {
-            userIds: [
-              ...audience.customerUserIds,
-              ...audience.vendorUserIds,
-              ...audience.riderUserIds,
-              ...audience.adminUserIds
-            ],
-            title: "Order cancelled",
-            body: String(payload["reason"] ?? "Order cancelled")
-          };
+          const reason = String(payload["reason"] ?? "Order cancelled");
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order Cancelled",
+              body: `Your order #${orderNum} has been cancelled. Reason: ${reason}`
+            });
+          }
+          if (audience.vendorUserIds.length > 0) {
+            messages.push({
+              userIds: audience.vendorUserIds,
+              title: "Order Cancelled",
+              body: `Order #${orderNum} has been cancelled. Reason: ${reason}`
+            });
+          }
+          if (audience.riderUserIds.length > 0) {
+            messages.push({
+              userIds: audience.riderUserIds,
+              title: "Order Cancelled",
+              body: `Order #${orderNum} has been cancelled. Reason: ${reason}`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Order Cancelled",
+              body: `Order #${orderNum} has been cancelled. Reason: ${reason}`
+            });
+          }
+          return messages;
+
         case "vendor.order_accepted":
-          return {
-            userIds: [...audience.customerUserIds, ...audience.adminUserIds],
-            title: "Order accepted",
-            body: "The vendor accepted the order"
-          };
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order Accepted",
+              body: `The vendor accepted your order #${orderNum}.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Order Accepted",
+              body: `Order #${orderNum} accepted by vendor.`
+            });
+          }
+          return messages;
+
         case "vendor.order_rejected":
-          return {
-            userIds: [...audience.customerUserIds, ...audience.adminUserIds],
-            title: "Order rejected",
-            body: String(payload["reason"] ?? "Vendor rejected the order")
-          };
+          const rejectReason = String(payload["reason"] ?? "Vendor rejected the order");
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order Rejected",
+              body: `Your order #${orderNum} was rejected by vendor. Reason: ${rejectReason}`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Order Rejected",
+              body: `Order #${orderNum} rejected by vendor. Reason: ${rejectReason}`
+            });
+          }
+          return messages;
+
         case "vendor.order_preparing":
-          return {
-            userIds: audience.customerUserIds,
-            title: "Order is being prepared",
-            body: "The vendor started preparing or packing your order"
-          };
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order Preparing",
+              body: `The vendor started preparing/packing your order #${orderNum}.`
+            });
+          }
+          return messages;
+
         case "vendor.order_ready_for_pickup":
-          return {
-            userIds: audience.adminUserIds,
-            title: "Order ready for pickup",
-            body: "Assign or confirm a rider for pickup"
-          };
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Order Ready for Pickup",
+              body: `Order #${orderNum} is ready. Assign a rider.`
+            });
+          }
+          return messages;
+
         case "delivery.rider_assigned":
         case "delivery.rider_reassigned":
-          return {
-            userIds: [...audience.riderUserIds, ...audience.adminUserIds],
-            title: "Rider assigned",
-            body: "A rider has been assigned to the order"
-          };
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Rider Assigned",
+              body: `A delivery partner has been assigned to bring your order #${orderNum}.`
+            });
+          }
+          if (audience.riderUserIds.length > 0) {
+            messages.push({
+              userIds: audience.riderUserIds,
+              title: "New assignment",
+              body: `Order #${orderNum} has been assigned to you.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Rider Assigned",
+              body: `Rider assigned to order #${orderNum}.`
+            });
+          }
+          return messages;
+
+        case "delivery.rider_arrived":
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Rider Arrived",
+              body: `The delivery partner has arrived at the vendor store for order #${orderNum}.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Rider Arrived",
+              body: `Rider arrived at store for order #${orderNum}.`
+            });
+          }
+          return messages;
+
         case "delivery.picked_up":
-          return {
-            userIds: [...audience.customerUserIds, ...audience.adminUserIds],
-            title: "Order picked up",
-            body: "Your order has been picked up"
-          };
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order Picked Up",
+              body: `The rider has picked up your order #${orderNum} and is on the way.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Order Picked Up",
+              body: `Rider picked up order #${orderNum}.`
+            });
+          }
+          return messages;
+
         case "delivery.delivered":
-          return {
-            userIds: [...audience.customerUserIds, ...audience.adminUserIds],
-            title: "Order delivered",
-            body: "Delivery was marked completed"
-          };
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Order Delivered",
+              body: `Your order #${orderNum} has been delivered successfully.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Order Delivered",
+              body: `Order #${orderNum} delivered.`
+            });
+          }
+          return messages;
+
         case "payment.collected":
-          return {
-            userIds: [...audience.customerUserIds, ...audience.adminUserIds],
-            title: "Payment collected",
-            body: `Payment collected: ${String(payload["amount"] ?? "")}`
-          };
+          const amount = String(payload["amount"] ?? "");
+          if (audience.customerUserIds.length > 0) {
+            messages.push({
+              userIds: audience.customerUserIds,
+              title: "Payment Collected",
+              body: `Rs ${amount} payment collected for order #${orderNum}.`
+            });
+          }
+          if (audience.adminUserIds.length > 0) {
+            messages.push({
+              userIds: audience.adminUserIds,
+              title: "Payment Collected",
+              body: `Payment of Rs ${amount} collected for order #${orderNum}.`
+            });
+          }
+          return messages;
       }
     }
 
     if (event.name === "support.ticket_created") {
-      return {
+      messages.push({
         userIds: await this.adminUserIds(),
-        title: "Support ticket created",
+        title: "New support ticket",
         body: String(payload["subject"] ?? "A support issue needs review")
-      };
+      });
+      return messages;
+    }
+
+    if (event.name === "support.ticket_updated") {
+      const ticketId = String(payload["ticketId"]);
+      const status = String(payload["status"]);
+      const adminNote = String(payload["adminNote"] ?? "No details provided");
+
+      const ticket = await this.prisma.supportTicket.findUnique({
+        where: { id: ticketId }
+      });
+      if (ticket) {
+        messages.push({
+          userIds: [ticket.createdBy],
+          title: "Support ticket updated",
+          body: `Your ticket has been updated to ${status}. Note: ${adminNote}`
+        });
+      }
+      messages.push({
+        userIds: await this.adminUserIds(),
+        title: "Support Ticket updated",
+        body: `Ticket #${ticketId} updated to ${status}.`
+      });
+      return messages;
+    }
+
+    if (event.name === "admin.sla_breach_detected") {
+      messages.push({
+        userIds: await this.adminUserIds(),
+        title: "Critical SLA Breach Alert",
+        body: String(payload["message"])
+      });
+      return messages;
+    }
+
+    if (event.name === "admin.reconciliation_alert_created") {
+      messages.push({
+        userIds: await this.adminUserIds(),
+        title: "Critical Payment Mismatch Alert",
+        body: String(payload["message"])
+      });
+      return messages;
     }
 
     return undefined;

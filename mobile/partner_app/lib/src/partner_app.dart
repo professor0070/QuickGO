@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quickgo_partner_app/src/screens/login_screen.dart';
 import 'package:quickgo_partner_app/src/screens/rider_mode_screen.dart';
@@ -20,6 +21,59 @@ class PartnerApp extends ConsumerStatefulWidget {
 class _PartnerAppState extends ConsumerState<PartnerApp> {
   var _loggedIn = false;
   var _mode = PartnerMode.vendor;
+  bool _fcmInitialized = false;
+
+  void _initFcm() {
+    if (_fcmInitialized) return;
+    _fcmInitialized = true;
+
+    // Register partner device token with backend
+    final client = ref.read(apiClientProvider);
+    registerPartnerDeviceToken(client);
+
+    // Listen for foreground push messages and show a dialog for new order alerts
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final title = message.notification?.title ?? 'New notification';
+      final body = message.notification?.body ?? '';
+      if (!mounted) return;
+
+      // If notification looks like a new order alert, show a prominent dialog
+      final isOrderAlert = title.toLowerCase().contains('order') ||
+          title.toLowerCase().contains('delivery');
+      if (isOrderAlert) {
+        showDialog(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: Text(title),
+            content: Text(body),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c),
+                child: const Text('Dismiss'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(c);
+                  ref.invalidate(vendorOrdersProvider);
+                  ref.invalidate(riderOrdersProvider);
+                  ref.invalidate(riderDashboardProvider);
+                  ref.invalidate(vendorDashboardProvider);
+                },
+                child: const Text('View Orders'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(body.isNotEmpty ? '$title: $body' : title),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +86,11 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
         : canUseRider
             ? PartnerMode.rider
             : PartnerMode.vendor;
+
+    // Initialize FCM once logged in
+    if (_loggedIn) {
+      _initFcm();
+    }
 
     return MaterialApp(
       title: 'QuickGO Partner',

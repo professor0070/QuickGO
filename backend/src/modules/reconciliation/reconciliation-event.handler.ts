@@ -255,7 +255,7 @@ export class ReconciliationEventHandler implements OnModuleInit, OnModuleDestroy
       });
     }
 
-    return this.prisma.paymentReconciliationAlert.create({
+    const alert = await this.prisma.paymentReconciliationAlert.create({
       data: {
         orderId: input.orderId,
         paymentId: input.paymentId,
@@ -263,6 +263,17 @@ export class ReconciliationEventHandler implements OnModuleInit, OnModuleDestroy
         ...data
       }
     });
+
+    await this.eventBus.publish(
+      "admin.reconciliation_alert_created",
+      {
+        alertId: alert.id,
+        message: `Reconciliation Alert (${input.type}) on Order: ${input.message}`
+      },
+      { source: "reconciliation.event-handler" }
+    );
+
+    return alert;
   }
 
   private alertMetadata(event: DomainEvent<"payment.collected">): Prisma.InputJsonObject {

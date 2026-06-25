@@ -72,6 +72,22 @@ export type DomainEventMap = {
     ticketId: string;
     subject?: string;
   };
+  "support.ticket_updated": {
+    ticketId: string;
+    status: string;
+    adminNote?: string;
+  };
+  "delivery.rider_arrived": {
+    orderId: string;
+  };
+  "admin.reconciliation_alert_created": {
+    alertId: string;
+    message: string;
+  };
+  "admin.sla_breach_detected": {
+    breachId: string;
+    message: string;
+  };
   "compliance.privacy_request_created": {
     requestId: string;
   };

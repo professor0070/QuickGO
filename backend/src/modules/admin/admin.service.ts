@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { DomainEventBus } from "../internal-events/domain-event-bus.service";
 import {
   CollectorType,
   ComplianceStatus,
@@ -73,7 +74,10 @@ type AttentionQueueItem = {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventBus: DomainEventBus
+  ) {}
 
   async dashboard() {
     const start = new Date();
@@ -320,7 +324,7 @@ export class AdminService {
       return existing;
     }
 
-    return this.prisma.slaEvent.create({
+    const created = await this.prisma.slaEvent.create({
       data: {
         orderId: item.order_id,
         type: item.type,
@@ -333,6 +337,17 @@ export class AdminService {
         }
       }
     });
+
+    await this.eventBus.publish(
+      "admin.sla_breach_detected",
+      {
+        breachId: created.id,
+        message: item.message
+      },
+      { source: "admin.service" }
+    );
+
+    return created;
   }
 
   async assignRider(orderId: string, dto: AssignRiderDto, actorId?: string) {

@@ -194,6 +194,17 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
     );
   }
 
+  Future<void> _markArrived(String orderId) async {
+    await _runOrderAction(
+      () => ref.read(apiClientProvider).postMap(
+            '/rider/orders/$orderId/arrived',
+            {},
+            idempotencyKey:
+                'rider-arrived-$orderId-${DateTime.now().millisecondsSinceEpoch}',
+          ),
+    );
+  }
+
   Future<void> _markPickedUp(String orderId) async {
     await _runOrderAction(
       () => ref
@@ -641,6 +652,12 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
                     child: const Text('Reject'),
                   ),
                 ],
+                if (status == 'RIDER_ASSIGNED' && acceptedAt != null)
+                  OutlinedButton.icon(
+                    onPressed: _submitting ? null : () => _markArrived(orderId),
+                    icon: const Icon(Icons.location_on),
+                    label: const Text('Arrived'),
+                  ),
                 if (status == 'RIDER_ASSIGNED')
                   FilledButton(
                     onPressed: _submitting ? null : () => _markPickedUp(orderId),

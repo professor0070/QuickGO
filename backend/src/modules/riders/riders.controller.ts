@@ -108,6 +108,21 @@ export class RidersController {
     };
   }
 
+  @Post("orders/:orderId/arrived")
+  async arrived(
+    @Req() request: Request,
+    @CurrentUser() user: RequestUser,
+    @Param("orderId") orderId: string
+  ) {
+    const result = await this.ridersService.markArrived(user.id, orderId);
+    await this.eventBus.publish(
+      "delivery.rider_arrived",
+      { orderId },
+      eventMetadata("riders.controller", request)
+    );
+    return result;
+  }
+
   @Post("orders/:orderId/picked-up")
   async pickedUp(
     @Req() request: Request,

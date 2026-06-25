@@ -308,6 +308,34 @@ export class RidersService {
     });
   }
 
+  async markArrived(userId: string, orderId: string) {
+    const rider = await this.riderForUser(userId);
+    const order = await this.assignedOrderDetail(userId, orderId);
+
+    const activeAssignment = order.deliveryAssignments.find(
+      (a) => a.riderId === rider.id && a.isActive
+    );
+    if (!activeAssignment) {
+      throw new BadRequestException("No active rider assignment found for this order");
+    }
+    if (!activeAssignment.acceptedAt) {
+      throw new BadRequestException("You must accept the assignment before marking arrival");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.auditRiderAction(tx, {
+        actorId: userId,
+        action: "rider.arrived_at_vendor",
+        entityType: "order",
+        entityId: orderId,
+        reason: "Rider marked arrival at vendor",
+        metadata: { riderId: rider.id, orderStatus: order.status }
+      });
+    });
+
+    return { success: true, message: "Rider arrival marked" };
+  }
+
   async markPickedUp(userId: string, orderId: string) {
     const rider = await this.riderForUser(userId);
     const order = await this.assignedOrderDetail(userId, orderId);

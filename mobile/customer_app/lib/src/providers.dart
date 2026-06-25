@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import 'package:quickgo_shared_auth/quickgo_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -154,3 +155,39 @@ final searchedProductsProvider = FutureProvider<List<dynamic>>((ref) async {
     return name.contains(query.toLowerCase());
   }).toList();
 });
+
+// Notification list provider
+final notificationsProvider = FutureProvider<List<dynamic>>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated) return const [];
+  return client.getList('/notifications');
+});
+
+// Unread notification count provider
+final unreadNotificationCountProvider = FutureProvider<int>((ref) async {
+  final client = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (!session.isAuthenticated) return 0;
+  final result = await client.getMap('/notifications/unread-count');
+  return (result['unread_count'] as num?)?.toInt() ?? 0;
+});
+
+/// Registers the device FCM token with the backend.
+/// Call this after a successful authentication.
+Future<void> registerDeviceToken(QuickGoApiClient client) async {
+  try {
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission();
+    final token = await messaging.getToken();
+    if (token != null && token.isNotEmpty) {
+      await client.postMap('/notifications/register-device', {
+        'fcmToken': token,
+        'platform': 'ANDROID',
+      });
+    }
+  } catch (_) {
+    // Silently ignore FCM registration failures — non-blocking for MVP
+  }
+}
+

@@ -322,12 +322,23 @@ export class AdminController {
 
   @Patch("support-tickets/:ticketId")
   async updateSupportTicket(
+    @Req() request: Request,
     @CurrentUser() user: RequestUser,
     @Param("ticketId") ticketId: string,
     @Body() body: UpdateSupportTicketDto
   ) {
+    const updated = await this.admin.updateSupportTicket(ticketId, body, user.id);
+    await this.eventBus.publish(
+      "support.ticket_updated",
+      {
+        ticketId,
+        status: updated.status,
+        adminNote: updated.adminNote ?? undefined
+      },
+      eventMetadata("admin.controller", request)
+    );
     return {
-      data: await this.admin.updateSupportTicket(ticketId, body, user.id),
+      data: updated,
       message: "Support ticket updated"
     };
   }

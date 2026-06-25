@@ -190,4 +190,77 @@ export class NotificationsService {
 
     return data as Record<string, unknown>;
   }
+
+  async registerDevice(
+    userId: string,
+    dto: { fcmToken: string; platform?: string; appVersion?: string },
+    roles: string[]
+  ) {
+    const { fcmToken, platform, appVersion } = dto;
+
+    const existingSession = await this.prisma.deviceSession.findFirst({
+      where: { userId, fcmToken }
+    });
+    if (existingSession) {
+      await this.prisma.deviceSession.update({
+        where: { id: existingSession.id },
+        data: { lastSeenAt: new Date(), platform: platform ?? "ANDROID", appVersion: appVersion ?? null }
+      });
+    } else {
+      await this.prisma.deviceSession.create({
+        data: {
+          userId,
+          fcmToken,
+          platform: platform ?? "ANDROID",
+          appVersion: appVersion ?? null
+        }
+      });
+    }
+
+    if (roles.includes("CUSTOMER")) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { userId }
+      });
+      if (customer) {
+        await this.prisma.customerDevice.upsert({
+          where: { fcmToken },
+          update: {
+            customerId: customer.id,
+            platform: platform ?? "ANDROID",
+            appVersion: appVersion ?? null
+          },
+          create: {
+            fcmToken,
+            customerId: customer.id,
+            platform: platform ?? "ANDROID",
+            appVersion: appVersion ?? null
+          }
+         });
+      }
+    }
+
+    if (roles.includes("RIDER")) {
+      const rider = await this.prisma.rider.findUnique({
+        where: { userId }
+      });
+      if (rider) {
+        await this.prisma.riderDevice.upsert({
+          where: { fcmToken },
+          update: {
+            riderId: rider.id,
+            platform: platform ?? "ANDROID",
+            appVersion: appVersion ?? null
+          },
+          create: {
+            fcmToken,
+            riderId: rider.id,
+            platform: platform ?? "ANDROID",
+            appVersion: appVersion ?? null
+          }
+        });
+      }
+    }
+
+    return { success: true, message: "Device registered successfully" };
+  }
 }

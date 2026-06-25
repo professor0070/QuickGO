@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import 'package:quickgo_shared_auth/quickgo_auth.dart';
 
@@ -113,3 +114,21 @@ final riderOrderHistoryProvider = FutureProvider<List<dynamic>>((ref) async {
   if (!session.isAuthenticated || !session.isRider) return const [];
   return client.getList('/rider/order-history');
 });
+
+/// Registers the partner device FCM token with the backend.
+/// Call this after a successful partner authentication.
+Future<void> registerPartnerDeviceToken(QuickGoApiClient client) async {
+  try {
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission();
+    final token = await messaging.getToken();
+    if (token != null && token.isNotEmpty) {
+      await client.postMap('/notifications/register-device', {
+        'fcmToken': token,
+        'platform': 'ANDROID',
+      });
+    }
+  } catch (_) {
+    // Silently ignore FCM registration failures — non-blocking for MVP
+  }
+}

@@ -1,6 +1,21 @@
-import { Controller, Get, Param, Patch } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { IsNotEmpty, IsOptional, IsString } from "class-validator";
 import { CurrentUser, RequestUser } from "../../common/auth/current-user.decorator";
 import { NotificationsService } from "./notifications.service";
+
+export class RegisterDeviceDto {
+  @IsString()
+  @IsNotEmpty()
+  fcmToken!: string;
+
+  @IsString()
+  @IsOptional()
+  platform?: string;
+
+  @IsString()
+  @IsOptional()
+  appVersion?: string;
+}
 
 @Controller("notifications")
 export class NotificationsController {
@@ -19,5 +34,13 @@ export class NotificationsController {
   @Patch(":notificationId/read")
   markRead(@CurrentUser() user: RequestUser, @Param("notificationId") notificationId: string) {
     return this.notifications.markRead(user.id, notificationId);
+  }
+
+  @Post("register-device")
+  registerDevice(
+    @CurrentUser() user: RequestUser,
+    @Body() body: RegisterDeviceDto
+  ) {
+    return this.notifications.registerDevice(user.id, body, user.roles);
   }
 }

@@ -75,6 +75,10 @@ export default function AdminDashboard() {
   const [selectedRiderKyc, setSelectedRiderKyc] = useState<any[]>([]);
   const [showRiderKycModal, setShowRiderKycModal] = useState<string | null>(null);
 
+  // Support ticket detail modal
+  const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+  const [showTicketModal, setShowTicketModal] = useState(false);
+
   // Form inputs
   const [newZone, setNewZone] = useState({
     name: "",
@@ -641,6 +645,39 @@ export default function AdminDashboard() {
         body: JSON.stringify({ status, reason })
       });
       alert("Support ticket updated");
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const loadTicketDetail = async (ticketId: string) => {
+    try {
+      const data = await fetchWithAuth(`/admin/support-tickets/${ticketId}`);
+      setSelectedTicket(data || null);
+      setShowTicketModal(true);
+    } catch (err: any) {
+      alert("Error loading support ticket details: " + err.message);
+    }
+  };
+
+  const handleUpdateTicketDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTicket) return;
+    const reason = requireReason("update support ticket status/notes");
+    if (!reason) return;
+    try {
+      await fetchWithAuth(`/admin/support-tickets/${selectedTicket.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: selectedTicket.status,
+          priority: selectedTicket.priority,
+          admin_note: selectedTicket.adminNote || "",
+          reason
+        })
+      });
+      alert("Support ticket updated successfully");
+      setShowTicketModal(false);
       loadData();
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -1686,20 +1723,18 @@ export default function AdminDashboard() {
                               <td className="px-5 py-3 text-slate-600">{ticket.description}</td>
                               <td className="px-5 py-3">{new Date(ticket.createdAt).toLocaleString()}</td>
                               <td className="px-5 py-3 flex gap-2">
-                                {ticket.status !== "RESOLVED" && (
+                                <button
+                                  onClick={() => loadTicketDetail(ticket.id)}
+                                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-xs font-semibold"
+                                >
+                                  Details
+                                </button>
+                                {ticket.status !== "RESOLVED" && ticket.status !== "CLOSED" && (
                                   <button
                                     onClick={() => handleUpdateSupportTicket(ticket.id, "RESOLVED")}
                                     className="rounded bg-green-600 hover:bg-green-700 text-white px-2 py-1 text-xs font-semibold"
                                   >
                                     Resolve
-                                  </button>
-                                )}
-                                {ticket.status === "OPEN" && (
-                                  <button
-                                    onClick={() => handleUpdateSupportTicket(ticket.id, "IN_PROGRESS")}
-                                    className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
-                                  >
-                                    Start
                                   </button>
                                 )}
                               </td>
@@ -2470,6 +2505,125 @@ export default function AdminDashboard() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showTicketModal && selectedTicket && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-4 border-b pb-3">
+              <h2 className="text-xl font-bold">Support Ticket Details</h2>
+              <button 
+                onClick={() => setShowTicketModal(false)}
+                className="text-slate-500 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Column: Details & Edit */}
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Subject</div>
+                  <div className="text-base font-bold text-slate-800">{selectedTicket.subject}</div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Description</div>
+                  <div className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{selectedTicket.description}</div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Created By (User ID)</div>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">{selectedTicket.createdBy}</div>
+                </div>
+
+                <form onSubmit={handleUpdateTicketDetails} className="space-y-3 pt-3 border-t">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Status</label>
+                    <select
+                      value={selectedTicket.status}
+                      onChange={(e) => setSelectedTicket({ ...selectedTicket, status: e.target.value })}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm bg-white text-slate-800"
+                      required
+                    >
+                      <option value="OPEN">Open</option>
+                      <option value="IN_REVIEW">In Review</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="WAITING_FOR_VENDOR">Waiting for Vendor</option>
+                      <option value="WAITING_FOR_RIDER">Waiting for Rider</option>
+                      <option value="RESOLVED">Resolved</option>
+                      <option value="REJECTED">Rejected</option>
+                      <option value="CLOSED">Closed</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Priority</label>
+                    <select
+                      value={selectedTicket.priority}
+                      onChange={(e) => setSelectedTicket({ ...selectedTicket, priority: e.target.value })}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm bg-white text-slate-800"
+                      required
+                    >
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="HIGH">High</option>
+                      <option value="URGENT">Urgent</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Internal Note (Admin Note)</label>
+                    <textarea
+                      value={selectedTicket.adminNote || ""}
+                      onChange={(e) => setSelectedTicket({ ...selectedTicket, adminNote: e.target.value })}
+                      placeholder="Add internal resolution or follow-up note..."
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm h-24"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowTicketModal(false)}
+                      className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded bg-indigo-650 hover:bg-indigo-750 text-white px-4 py-2 text-sm font-semibold shadow"
+                    >
+                      Save Ticket
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Right Column: History / Timeline */}
+              <div className="border-l pl-6 space-y-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Ticket Event History</div>
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                    {!selectedTicket.events || selectedTicket.events.length === 0 ? (
+                      <div className="text-sm text-slate-550 italic">No events logged for this ticket.</div>
+                    ) : (
+                      selectedTicket.events.map((event: any) => (
+                        <div key={event.id} className="p-3 rounded border border-slate-100 bg-slate-50 text-xs">
+                          <div className="font-semibold text-slate-700">{event.message}</div>
+                          <div className="text-slate-400 mt-2 flex justify-between">
+                            <span>By: {event.actorId ? event.actorId.slice(0, 8) + "…" : "System"}</span>
+                            <span>{new Date(event.createdAt).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

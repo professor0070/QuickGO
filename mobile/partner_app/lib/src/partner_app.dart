@@ -5,6 +5,8 @@ import 'package:quickgo_partner_app/src/screens/rider_mode_screen.dart';
 import 'package:quickgo_partner_app/src/screens/vendor_mode_screen.dart';
 import 'package:quickgo_shared_ui/quickgo_ui.dart';
 import 'providers.dart';
+import 'screens/partner_support_screen.dart';
+import 'screens/partner_legal_screen.dart';
 
 enum PartnerMode { vendor, rider }
 
@@ -67,6 +69,85 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
                       ),
                     ),
                 ],
+              ),
+              drawer: Drawer(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    DrawerHeader(
+                      decoration: const BoxDecoration(
+                        color: quickGoGreen,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const CircleAvatar(
+                            radius: 30,
+                            backgroundColor: Colors.white,
+                            child: Icon(Icons.business_center, color: quickGoGreen, size: 30),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'QuickGO Partner',
+                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            session.phone ?? 'Partner session',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.help_outline),
+                      title: const Text('Help & Support'),
+                      onTap: () {
+                        Navigator.pop(context); // close drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (c) => const PartnerSupportScreen()),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.gavel),
+                      title: const Text('Policies & Agreements'),
+                      onTap: () {
+                        Navigator.pop(context); // close drawer
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (c) => PartnerLegalScreen(mode: mode)),
+                        );
+                      },
+                    ),
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.logout, color: Colors.redAccent),
+                      title: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
+                      onTap: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (c) => AlertDialog(
+                            title: const Text('Logout?'),
+                            content: const Text('Are you sure you want to logout?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                              TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Logout')),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          ref.read(sessionProvider.notifier).logout();
+                          setState(() => _loggedIn = false);
+                          if (context.mounted) {
+                            Navigator.pop(context); // close drawer if open
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ),
               body: mode == PartnerMode.vendor
                   ? const VendorModeScreen()

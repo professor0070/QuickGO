@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma.service";
 import { CreateSupportTicketDto } from "./support.dto";
 
@@ -31,6 +31,20 @@ export class SupportService {
       orderBy: { createdAt: "desc" },
       include: { events: true }
     });
+  }
+
+  async getTicketDetail(userId: string, ticketId: string) {
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      include: { events: { orderBy: { createdAt: "asc" } }, order: true }
+    });
+    if (!ticket) {
+      throw new NotFoundException("Support ticket not found");
+    }
+    if (ticket.createdBy !== userId) {
+      throw new ForbiddenException("You do not have access to this support ticket");
+    }
+    return ticket;
   }
 }
 

@@ -8,4 +8,7 @@
 - Admin can onboard vendors/riders, manage products/service zones, monitor orders, manually assign/reassign riders, reconcile payments, manage support/compliance, review reports, and inspect audit logs.
 - Critical mutations use idempotency keys and write audit history where operationally required.
 - Production launch uses separate staging and production environments, managed PostgreSQL, Render backend, Vercel admin, Cloudinary storage, FCM, and private secrets.
+- Support tickets and partner query tickets can be created and updated, tracking event timelines chronologically.
+- Legal documents (Terms of Service, Privacy Policy, Refund Policy, Rider Policy, Vendor Policy) are displayed inside the mobile applications, marked with prominent draft warnings for testing.
+- Partner app Scaffold features a side-navigation menu allowing Help, Policies review, and session logout.
 

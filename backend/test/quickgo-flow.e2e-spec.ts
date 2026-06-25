@@ -822,6 +822,28 @@ describe("QuickGO MVP backend flow (e2e)", () => {
       })
       .expect(201);
 
+    // Verify customer ticket detail route works
+    const customerDetail = await request(app.getHttpServer())
+      .get(`/api/v1/support/tickets/${supportTicket.body.data.id}`)
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+    expect(customerDetail.body.data.id).toBe(supportTicket.body.data.id);
+    expect(customerDetail.body.data.subject).toBe("Need help");
+
+    // Verify another user cannot access customer's ticket
+    const otherCustomerToken = await login("9433333339");
+    await request(app.getHttpServer())
+      .get(`/api/v1/support/tickets/${supportTicket.body.data.id}`)
+      .set("Authorization", bearer(otherCustomerToken))
+      .expect(403);
+
+    // Verify admin ticket detail route works
+    const adminDetail = await request(app.getHttpServer())
+      .get(`/api/v1/admin/support-tickets/${supportTicket.body.data.id}`)
+      .set("Authorization", bearer(adminToken))
+      .expect(200);
+    expect(adminDetail.body.data.id).toBe(supportTicket.body.data.id);
+
     const resolvedTicket = await request(app.getHttpServer())
       .patch(`/api/v1/admin/support-tickets/${supportTicket.body.data.id}`)
       .set("Authorization", bearer(adminToken))

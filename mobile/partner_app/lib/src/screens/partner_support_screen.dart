@@ -3,26 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quickgo_shared_ui/quickgo_ui.dart';
 import '../providers.dart';
 
-// Provider to list the current user's tickets
-final supportTicketsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+// Provider to list the current partner's tickets
+final partnerTicketsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   return client.getList('/support/tickets');
 });
 
 // Provider to fetch details of a specific ticket (includes events & details)
-final ticketDetailProvider = FutureProvider.family.autoDispose<Map<String, dynamic>, String>((ref, ticketId) async {
+final partnerTicketDetailProvider = FutureProvider.family.autoDispose<Map<String, dynamic>, String>((ref, ticketId) async {
   final client = ref.watch(apiClientProvider);
   return client.getMap('/support/tickets/$ticketId');
 });
 
-class SupportScreen extends ConsumerStatefulWidget {
-  const SupportScreen({super.key});
+class PartnerSupportScreen extends ConsumerStatefulWidget {
+  const PartnerSupportScreen({super.key});
 
   @override
-  ConsumerState<SupportScreen> createState() => _SupportScreenState();
+  ConsumerState<PartnerSupportScreen> createState() => _PartnerSupportScreenState();
 }
 
-class _SupportScreenState extends ConsumerState<SupportScreen> {
+class _PartnerSupportScreenState extends ConsumerState<PartnerSupportScreen> {
   void _openCreateTicketSheet() {
     showModalBottomSheet(
       context: context,
@@ -34,212 +34,208 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ticketsAsync = ref.watch(supportTicketsProvider);
-    final hasAppBar = Navigator.canPop(context);
+    final ticketsAsync = ref.watch(partnerTicketsProvider);
 
-    final content = RefreshIndicator(
-      onRefresh: () async => ref.invalidate(supportTicketsProvider),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Header Help Banner
-          Card(
-            clipBehavior: Clip.antiAlias,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: quickGoLine),
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [quickGoGreen, quickGoGreen.withOpacity(0.85)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Partner Support'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async => ref.invalidate(partnerTicketsProvider),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Header Help Banner
+            Card(
+              clipBehavior: Clip.antiAlias,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: quickGoLine),
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [quickGoGreen, quickGoGreen.withOpacity(0.85)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Partner Help Desk',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Encountering issues with order dispatch, rider payments, settlement amounts, or account validation? Raise a partner query and track its resolution.',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: quickGoGreen,
+                        backgroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: _openCreateTicketSheet,
+                      icon: const Icon(Icons.support_agent, size: 18),
+                      label: const Text('Raise Query Ticket', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ],
                 ),
               ),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Support Center',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Have an issue with an order or account? Submit a support request, and our operations team will resolve it quickly.',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: quickGoGreen,
-                      backgroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: _openCreateTicketSheet,
-                    icon: const Icon(Icons.add_comment_outlined, size: 18),
-                    label: const Text('Create New Ticket', style: TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                ],
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Your Support Tickets',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Your Tickets',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ticketsAsync.when(
-            data: (tickets) {
-              if (tickets.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.support_agent, size: 48, color: Colors.grey.shade400),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No support tickets found',
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              return Column(
-                children: tickets.map<Widget>((ticket) {
-                  final id = ticket['id'] as String? ?? '';
-                  final subject = ticket['subject'] as String? ?? 'No Subject';
-                  final description = ticket['description'] as String? ?? '';
-                  final status = ticket['status'] as String? ?? 'OPEN';
-                  final createdAtStr = ticket['createdAt'] as String? ?? '';
-                  final dateText = createdAtStr.length >= 10
-                      ? createdAtStr.substring(0, 10)
-                      : 'Recently';
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (c) => SupportTicketDetailScreen(ticketId: id),
+            const SizedBox(height: 8),
+            ticketsAsync.when(
+              data: (tickets) {
+                if (tickets.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.mark_chat_read_outlined, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No queries submitted',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                         ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: _getStatusColor(status).withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                _getStatusIcon(status),
-                                color: _getStatusColor(status),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          subject,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _StatusBadge(status: status),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    description,
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 13,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Submitted: $dateText',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   );
-                }).toList(),
-              );
-            },
-            loading: () => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24.0),
-                child: CircularProgressIndicator(),
+                }
+                return Column(
+                  children: tickets.map<Widget>((ticket) {
+                    final id = ticket['id'] as String? ?? '';
+                    final subject = ticket['subject'] as String? ?? 'No Subject';
+                    final description = ticket['description'] as String? ?? '';
+                    final status = ticket['status'] as String? ?? 'OPEN';
+                    final createdAtStr = ticket['createdAt'] as String? ?? '';
+                    final dateText = createdAtStr.length >= 10
+                        ? createdAtStr.substring(0, 10)
+                        : 'Recently';
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (c) => PartnerTicketDetailScreen(ticketId: id),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: _getStatusColor(status).withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _getStatusIcon(status),
+                                  color: _getStatusColor(status),
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            subject,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        _StatusBadge(status: status),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      description,
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 13,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Submitted: $dateText',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade500,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+              error: (err, _) => Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Failed to load tickets: $err',
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
               ),
             ),
-            error: (err, _) => Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Failed to load tickets: $err',
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
-
-    if (hasAppBar) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Support')),
-        body: content,
-      );
-    }
-    return content;
   }
 }
 
@@ -268,16 +264,16 @@ class _CreateTicketBottomSheetState extends ConsumerState<_CreateTicketBottomShe
     try {
       final client = ref.read(apiClientProvider);
       await client.postMap('/support/tickets', {
-        'subject': _subject.text.trim().isEmpty ? 'Customer support request' : _subject.text.trim(),
+        'subject': _subject.text.trim().isEmpty ? 'Partner support request' : _subject.text.trim(),
         'description': desc,
         'priority': 'MEDIUM',
       });
       
-      ref.invalidate(supportTicketsProvider);
+      ref.invalidate(partnerTicketsProvider);
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Support ticket created successfully')),
+          const SnackBar(content: Text('Query ticket created successfully')),
         );
       }
     } catch (e) {
@@ -329,7 +325,7 @@ class _CreateTicketBottomSheetState extends ConsumerState<_CreateTicketBottomShe
               controller: _subject,
               decoration: const InputDecoration(
                 labelText: 'Subject',
-                hintText: 'Brief summary (e.g. Payment Issue, App Bug)',
+                hintText: 'Brief summary (e.g. Settlement Delay, Order Reassignment)',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -368,14 +364,14 @@ class _CreateTicketBottomSheetState extends ConsumerState<_CreateTicketBottomShe
   }
 }
 
-class SupportTicketDetailScreen extends ConsumerWidget {
-  const SupportTicketDetailScreen({super.key, required this.ticketId});
+class PartnerTicketDetailScreen extends ConsumerWidget {
+  const PartnerTicketDetailScreen({super.key, required this.ticketId});
 
   final String ticketId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(ticketDetailProvider(ticketId));
+    final detailAsync = ref.watch(partnerTicketDetailProvider(ticketId));
 
     return Scaffold(
       appBar: AppBar(
@@ -383,7 +379,7 @@ class SupportTicketDetailScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(ticketDetailProvider(ticketId)),
+            onPressed: () => ref.invalidate(partnerTicketDetailProvider(ticketId)),
           ),
         ],
       ),

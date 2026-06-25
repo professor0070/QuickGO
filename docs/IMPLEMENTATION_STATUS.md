@@ -113,3 +113,15 @@ Implemented Phase 9 work:
 - Applied all schema migrations (Operations Hardening, Reconciliation Alerts, Rider Mode) to the local dev database.
 - Fixed Customer App address submission regex validations (removed literal dollar sign requirement).
 
+## Phase 10 Support, Legal, Privacy & Compliance
+
+Phase 10 was implemented and fully verified on 2026-06-25.
+
+Implemented Phase 10 work:
+- **Backend Endpoints:** Added ownership-checked details endpoints (`GET /support/tickets/:ticketId`) and admin-specific detail query (`GET /admin/support-tickets/:ticketId`) with comprehensive coverage in E2E tests.
+- **Admin Panel UI:** Refactored the Support Tickets tab to incorporate a sliding detail panel showing ticket metadata, chronological event logs, status selectors, and forms to append internal operations resolution notes.
+- **Customer App:** Built a dedicated `LegalScreen` containing Terms & Conditions, Privacy Policy, and Refund Policy tabs prepended with draft alerts. Connected the Profile tile to `LegalScreen`. Upgraded `SupportScreen` to support standalone AppBar navigation, user ticket listings, status-colored badges, detail visual timelines, and a bottom sheet request creation form.
+- **Partner App:** Attached a side-navigation `Drawer` in the main home Scaffold containing support, policies, and logout buttons (resolving the missing logout capability). Built `PartnerSupportScreen` (for raising and tracking query tickets) and `PartnerLegalScreen` (featuring Terms, Privacy, and mode-specific Rider/Vendor policies with draft disclaimers).
+- **Validation:** Successfully executed the monorepo checks (`npm run check`), NestJS backend unit and E2E integration test suites, Next.js lint audits, and Flutter/Dart static analysis & widget tests.
+
+

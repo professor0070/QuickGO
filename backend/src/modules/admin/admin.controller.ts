@@ -315,6 +315,11 @@ export class AdminController {
     return this.admin.supportTickets();
   }
 
+  @Get("support-tickets/:ticketId")
+  supportTicketDetail(@Param("ticketId") ticketId: string) {
+    return this.admin.supportTicketDetail(ticketId);
+  }
+
   @Patch("support-tickets/:ticketId")
   async updateSupportTicket(
     @CurrentUser() user: RequestUser,

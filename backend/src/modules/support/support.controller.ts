@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
 import { Request } from "express";
 import { CurrentUser, RequestUser } from "../../common/auth/current-user.decorator";
 import { eventMetadata } from "../../common/http/request-metadata";
@@ -34,5 +34,13 @@ export class SupportController {
   @Get("tickets")
   listMine(@CurrentUser() user: RequestUser) {
     return this.support.listMine(user.id);
+  }
+
+  @Get("tickets/:ticketId")
+  async getTicketDetail(
+    @CurrentUser() user: RequestUser,
+    @Param("ticketId") ticketId: string
+  ) {
+    return this.support.getTicketDetail(user.id, ticketId);
   }
 }

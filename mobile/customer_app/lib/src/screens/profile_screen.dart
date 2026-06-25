@@ -6,6 +6,7 @@ import 'address_list_screen.dart';
 import 'package:quickgo_customer_app/src/screens/orders_screen.dart';
 import 'package:quickgo_customer_app/src/screens/support_screen.dart';
 import 'package:quickgo_customer_app/src/screens/login_screen.dart';
+import 'legal_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -103,15 +104,9 @@ class ProfileScreen extends ConsumerWidget {
               leading: const Icon(Icons.policy),
               title: const Text('Terms & Privacy'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => showDialog(
-                context: context,
-                builder: (c) => AlertDialog(
-                  title: const Text('Terms & Privacy'),
-                  content: const Text('Terms and Privacy are available on the website.'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
-                  ],
-                ),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (c) => const LegalScreen()),
               ),
             ),
             ListTile(

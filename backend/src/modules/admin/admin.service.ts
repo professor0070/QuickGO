@@ -965,6 +965,20 @@ export class AdminService {
     });
   }
 
+  async supportTicketDetail(ticketId: string) {
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      include: {
+        events: { orderBy: { createdAt: "asc" } },
+        order: true
+      }
+    });
+    if (!ticket) {
+      throw new NotFoundException("Support ticket not found");
+    }
+    return ticket;
+  }
+
   async updateSupportTicket(
     ticketId: string,
     dto: UpdateSupportTicketDto,

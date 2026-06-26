@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:16-alpine
+    container_name: quickgo-database
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Admin12_secret_password_here
+      POSTGRES_DB: quickgo_production
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d quickgo_production"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: quickgo-backend
+    restart: always
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:Admin12_secret_password_here@database:5432/quickgo_production?sslmode=disable
+      JWT_ACCESS_SECRET: quickgo-production-jwt-access-secret-32-characters-long
+      JWT_REFRESH_SECRET: quickgo-production-jwt-refresh-secret-32-characters-long
+      OTP_PROVIDER: mock
+      MOCK_OTP_CODE: "123456"
+      CLOUD_STORAGE_PROVIDER: cloudinary
+      CLOUDINARY_CLOUD_NAME: "mock_cloudinary_cloud"
+      CLOUDINARY_API_KEY: "mock_cloudinary_api_key"
+      CLOUDINARY_API_SECRET: "mock_cloudinary_api_secret"
+      ADMIN_APP_URL: "http://localhost:3001"
+      CUSTOMER_APP_DEEPLINK: "quickgo://"
+      COD_ON_DELIVERY_ENABLED: "false"
+      UPI_ON_DELIVERY_ENABLED: "true"
+      RAZORPAY_KEY_ID: "rzp_test_placeholder_key_id"
+      RAZORPAY_KEY_SECRET: "rzp_test_placeholder_key_secret"
+      RAZORPAY_WEBHOOK_SECRET: "rzp_test_placeholder_webhook_secret"
+      FCM_SERVER_KEY_OR_SERVICE_ACCOUNT: "mock_fcm_server_key"
+    ports:
+      - "3000:3000"
+    command: >
+      sh -c "cd backend && npx prisma migrate deploy && npx prisma db seed && cd .. && node backend/dist/src/main"
+
+  admin-panel:
+    build:
+      context: .
+      dockerfile: web/admin_panel/Dockerfile
+    container_name: quickgo-admin-panel
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:3000/api/v1"
+      NEXT_PUBLIC_APP_ENV: "production"
+    ports:
+      - "3001:3001"
+
+volumes:
+  postgres_data:

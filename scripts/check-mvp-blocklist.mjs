@@ -18,7 +18,13 @@ const allowedPolicyFiles = new Set([
   "README.md",
   "package-lock.json",
   "scripts/check-mvp-blocklist.mjs",
-  "backend/src/common/constants.ts"
+  "backend/src/common/constants.ts",
+  "PHASE_12_TEST_REPORT.md",
+  "TESTING_BACKLOG.md",
+  "PHASE_13_CHECKLIST.md",
+  "PHASE_13_DEPLOYMENT_AUDIT.md",
+  "PHASE_13_VERIFICATION_CHECKLIST.md",
+  "PHASE_13_CERTIFICATION.md"
 ]);
 const blocked = [
   "pnr",

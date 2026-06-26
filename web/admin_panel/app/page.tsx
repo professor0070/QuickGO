@@ -272,8 +272,7 @@ export default function AdminDashboard() {
   const money = (value: unknown) => Number(value ?? 0).toFixed(2);
 
   const loadData = async () => {
-    if (!authToken) {
-      setError("Please set a valid Admin JWT Auth Token in Settings.");
+    if (!authToken || !userProfile) {
       return;
     }
     setLoading(true);
@@ -347,7 +346,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadData();
-  }, [activeTab, authToken, apiUrl]);
+  }, [activeTab, authToken, apiUrl, userProfile]);
 
   // Actions
   const handleCreateVendor = async (e: React.FormEvent) => {

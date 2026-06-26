@@ -33,6 +33,60 @@ const normalizePhone = (input: string): string => {
   return `+91${ten}`;
 };
 
+const formatLabel = (key: string) => {
+  return key
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
+const formatValue = (key: string, val: any) => {
+  if (val === null || val === undefined) {
+    return <span className="text-slate-400 font-normal italic">N/A</span>;
+  }
+  if (typeof val === "boolean") {
+    return val ? (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/25">
+        ✓ Met
+      </span>
+    ) : (
+      <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-500/20">
+        Pending
+      </span>
+    );
+  }
+  const keyLower = key.toLowerCase();
+  if (keyLower.includes("rate") || keyLower.includes("percent") || keyLower.includes("under_90")) {
+    return <span className="text-indigo-600 font-bold">{Number(val).toFixed(1)}%</span>;
+  }
+  if (keyLower.includes("value") || keyLower.includes("total") || keyLower.includes("fee") || keyLower.includes("commission") || keyLower.includes("payout")) {
+    return <span className="text-emerald-600 font-bold">₹{Number(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+  }
+  if (keyLower.includes("time") || keyLower.includes("minutes")) {
+    return <span className="text-amber-600 font-bold">{Number(val).toFixed(1)} mins</span>;
+  }
+  return <span className="text-slate-805 font-bold">{val.toString()}</span>;
+};
+
+const renderValidationSection = (section: string, values: any) => {
+  const sectionTitle = section.split("_").join(" ");
+  return (
+    <div key={section} className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden transition hover:shadow-md animate-fade-in">
+      <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-3.5">
+        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">{sectionTitle}</h3>
+      </div>
+      <div className="p-5 flex-1 divide-y divide-slate-100">
+        {Object.entries(values).map(([key, val]) => (
+          <div key={key} className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
+            <span className="text-sm text-slate-500 font-medium">{formatLabel(key)}</span>
+            <span className="text-sm">{formatValue(key, val)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [apiUrl, setApiUrl] = useState("http://localhost:3000/api/v1");
@@ -1843,15 +1897,8 @@ export default function AdminDashboard() {
                   {!report ? (
                     <div className="p-5 text-center text-slate-500">No validation report loaded.</div>
                   ) : (
-                    <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-                      {Object.entries(report).map(([section, values]) => (
-                        <div key={section} className="rounded border border-slate-200 p-4">
-                          <h3 className="font-bold capitalize">{section.split("_").join(" ")}</h3>
-                          <pre className="mt-3 whitespace-pre-wrap text-xs text-slate-600">
-                            {JSON.stringify(values, null, 2)}
-                          </pre>
-                        </div>
-                      ))}
+                    <div className="grid gap-6 p-6 md:grid-cols-2 xl:grid-cols-3 bg-slate-50/20">
+                      {Object.entries(report).map(([section, values]) => renderValidationSection(section, values))}
                     </div>
                   )}
                 </div>

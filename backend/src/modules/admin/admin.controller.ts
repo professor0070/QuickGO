@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { Request } from "express";
 import { CurrentUser, RequestUser } from "../../common/auth/current-user.decorator";
 import { Roles } from "../../common/auth/roles.decorator";
@@ -24,7 +24,8 @@ import {
   UpdateVendorStatusDto,
   CreateCategoryDto,
   UpdateCategoryDto,
-  ApprovePayoutDto
+  ApprovePayoutDto,
+  AssignRoleDto
 } from "./admin.dto";
 import { AdminService } from "./admin.service";
 
@@ -386,6 +387,50 @@ export class AdminController {
     return {
       data: await this.admin.updateCategory(categoryId, body, user.id),
       message: "Category updated successfully"
+    };
+  }
+
+  @Get("users")
+  async listUsers(
+    @Query("phone") phone?: string
+  ) {
+    return {
+      data: await this.admin.listUsers(phone),
+      message: "Users retrieved successfully"
+    };
+  }
+
+  @Get("users/:userId")
+  async getUser(
+    @Param("userId") userId: string
+  ) {
+    return {
+      data: await this.admin.getUser(userId),
+      message: "User retrieved successfully"
+    };
+  }
+
+  @Post("users/:userId/roles")
+  async assignRole(
+    @CurrentUser() user: RequestUser,
+    @Param("userId") userId: string,
+    @Body() body: AssignRoleDto
+  ) {
+    return {
+      data: await this.admin.assignRole(userId, body.role, user.id),
+      message: "Role assigned successfully"
+    };
+  }
+
+  @Delete("users/:userId/roles/:role")
+  async removeRole(
+    @CurrentUser() user: RequestUser,
+    @Param("userId") userId: string,
+    @Param("role") role: string
+  ) {
+    return {
+      data: await this.admin.removeRole(userId, role, user.id),
+      message: "Role removed successfully"
     };
   }
 }

@@ -307,3 +307,9 @@ export class UpdateCategoryDto {
   @IsBoolean()
   is_fresh?: boolean;
 }
+
+export class AssignRoleDto {
+  @IsString()
+  role!: string;
+}
+

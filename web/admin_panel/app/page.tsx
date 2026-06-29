@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react";
 // Nav items in role order / operational order
 const navItems = [
   "Dashboard",
+  "Role Management",
   "Orders",
   "Vendors",
   "Products",
@@ -65,7 +66,7 @@ const formatValue = (key: string, val: any) => {
   if (keyLower.includes("time") || keyLower.includes("minutes")) {
     return <span className="text-amber-600 font-bold">{Number(val).toFixed(1)} mins</span>;
   }
-  return <span className="text-slate-805 font-bold">{val.toString()}</span>;
+  return <span className="text-slate-800 font-bold">{val.toString()}</span>;
 };
 
 const renderValidationSection = (section: string, values: any) => {
@@ -180,6 +181,11 @@ export default function AdminDashboard() {
     amount_collected: 0,
     reason: ""
   });
+
+  // Role Management states
+  const [roleUsers, setRoleUsers] = useState<any[]>([]);
+  const [roleSearchPhone, setRoleSearchPhone] = useState("");
+  const [assigningRoleMap, setAssigningRoleMap] = useState<Record<string, string>>({});
 
   // Local storage for config & check token
   useEffect(() => {
@@ -390,6 +396,10 @@ export default function AdminDashboard() {
       } else if (activeTab === "Reports") {
         const r = await fetchWithAuth("/admin/reports/validation-dashboard");
         setReport(r || null);
+      } else if (activeTab === "Role Management") {
+        const query = roleSearchPhone ? `?phone=${encodeURIComponent(roleSearchPhone)}` : "";
+        const u = await fetchWithAuth(`/admin/users${query}`);
+        setRoleUsers(u || []);
       }
     } catch (err: any) {
       setError(err.message || "Failed to fetch data from API");
@@ -689,6 +699,64 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAssignRole = async (userId: string) => {
+    const roleCode = assigningRoleMap[userId];
+    if (!roleCode) {
+      alert("Please select a role to assign");
+      return;
+    }
+    const sensitiveRoles = ["ADMIN", "SUPER_ADMIN", "VENDOR_OWNER", "RIDER"];
+    if (sensitiveRoles.includes(roleCode)) {
+      if (!confirm(`Are you absolutely sure you want to assign the role "${roleCode}" to this user?`)) {
+        return;
+      }
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/users/${userId}/roles`, {
+        method: "POST",
+        body: JSON.stringify({ role: roleCode })
+      });
+      alert(`Role ${roleCode} assigned successfully`);
+      // Reset dropdown selection
+      setAssigningRoleMap(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveRole = async (userId: string, roleCode: string) => {
+    if (roleCode === "CUSTOMER") {
+      alert("Removing CUSTOMER role is blocked to ensure user account integrity.");
+      return;
+    }
+    const sensitiveRoles = ["ADMIN", "SUPER_ADMIN", "VENDOR_OWNER", "RIDER"];
+    if (sensitiveRoles.includes(roleCode)) {
+      if (!confirm(`Are you absolutely sure you want to remove the role "${roleCode}" from this user?`)) {
+        return;
+      }
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/users/${userId}/roles/${roleCode}`, {
+        method: "DELETE"
+      });
+      alert(`Role ${roleCode} removed successfully`);
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateSupportTicket = async (ticketId: string, status: string) => {
     const reason = requireReason(`${status.toLowerCase()} support ticket`);
     if (!reason) return;
@@ -776,7 +844,7 @@ export default function AdminDashboard() {
           <div className="text-center mb-8">
             <span className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">QuickGO</span>
             <span className="ml-2 rounded bg-indigo-900 px-2.5 py-0.5 text-xs font-semibold text-indigo-300">Admin Portal</span>
-            <p className="mt-2 text-sm text-slate-405">Sign in with phone number & OTP verification</p>
+            <p className="mt-2 text-sm text-slate-400">Sign in with phone number & OTP verification</p>
           </div>
 
           {error && (
@@ -829,7 +897,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   onClick={() => setOtpSent(false)}
-                  className="w-1/3 rounded-lg border border-slate-700 hover:bg-slate-750 py-3 text-sm font-semibold text-slate-300 transition"
+                  className="w-1/3 rounded-lg border border-slate-700 hover:bg-slate-800 py-3 text-sm font-semibold text-slate-300 transition"
                 >
                   Back
                 </button>
@@ -991,15 +1059,15 @@ export default function AdminDashboard() {
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cancellations Today</div>
-                      <div className="mt-2 text-3xl font-bold tracking-tight text-red-650">{stats.cancellation_count ?? 0}</div>
+                      <div className="mt-2 text-3xl font-bold tracking-tight text-red-600">{stats.cancellation_count ?? 0}</div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Today's Vendor Commission</div>
-                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-650">Rs {money(stats.today_vendor_commission)}</div>
+                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-600">Rs {money(stats.today_vendor_commission)}</div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Today's Delivery Fees</div>
-                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-650">Rs {money(stats.today_delivery_fee_collected)}</div>
+                      <div className="mt-2 text-2xl font-bold tracking-tight text-indigo-600">Rs {money(stats.today_delivery_fee_collected)}</div>
                     </div>
                   </div>
 
@@ -1010,6 +1078,207 @@ export default function AdminDashboard() {
                     </div>
                     <div className="p-5 text-center text-slate-500">
                       Go to the <strong>Orders</strong> tab to manually assign riders or review active deliveries.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "Role Management" && (
+                <div className="space-y-6">
+                  {/* Search Bar */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        loadData();
+                      }}
+                      className="flex flex-col sm:flex-row items-end gap-4"
+                    >
+                      <div className="flex-1">
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Search User by Phone Number</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. +917033475405 or 7033475405"
+                          value={roleSearchPhone}
+                          onChange={(e) => setRoleSearchPhone(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="flex gap-2 w-full sm:w-auto">
+                        <button
+                          type="submit"
+                          className="flex-1 sm:flex-initial rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-sm font-semibold shadow transition"
+                        >
+                          Search
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRoleSearchPhone("");
+                            // Trigger loadData on empty search
+                            setTimeout(() => {
+                              loadData();
+                            }, 50);
+                          }}
+                          className="rounded-lg border border-slate-300 hover:bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                  {/* Users List */}
+                  <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4 bg-slate-50/50">
+                      <h2 className="text-lg font-bold text-slate-800">Users & Roles Registry</h2>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Customer access is automatic. Assign roles here only for partner/admin access. Only SUPER_ADMIN can assign or remove ADMIN and SUPER_ADMIN roles.
+                      </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                          <tr>
+                            <th className="px-5 py-3">Name & Phone</th>
+                            <th className="px-5 py-3">Current Roles</th>
+                            <th className="px-5 py-3">Account Status</th>
+                            <th className="px-5 py-3">Assign New Role</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {roleUsers.length === 0 ? (
+                            <tr>
+                              <td className="px-5 py-8 text-center text-slate-500" colSpan={4}>
+                                No users found. Search by a valid phone number.
+                              </td>
+                            </tr>
+                          ) : (
+                            roleUsers.map((user) => {
+                              const isActorSuperAdmin = userProfile?.roles?.includes("SUPER_ADMIN") ?? false;
+                              return (
+                                <tr key={user.id} className="hover:bg-slate-50/50">
+                                  <td className="px-5 py-4">
+                                    <div className="font-semibold text-slate-800">{user.name || "Unnamed User"}</div>
+                                    <div className="text-xs text-slate-500 font-mono mt-0.5">{user.phone}</div>
+                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {user.id}</div>
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex flex-wrap gap-1.5 max-w-md">
+                                        {!user.roles || user.roles.length === 0 ? (
+                                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border bg-indigo-50 text-indigo-700 border-indigo-200">
+                                            CUSTOMER (Default)
+                                          </span>
+                                        ) : (
+                                          user.roles.map((ur: any) => {
+                                            const rCode = ur.role.code;
+                                            let badgeColor = "bg-slate-100 text-slate-700 border-slate-200";
+                                            if (rCode === "SUPER_ADMIN") badgeColor = "bg-red-50 text-red-700 border-red-200";
+                                            else if (rCode === "ADMIN") badgeColor = "bg-orange-50 text-orange-700 border-orange-200";
+                                            else if (rCode === "VENDOR_OWNER") badgeColor = "bg-green-50 text-green-700 border-green-200";
+                                            else if (rCode === "RIDER") badgeColor = "bg-blue-50 text-blue-700 border-blue-200";
+                                            else if (rCode === "CUSTOMER") badgeColor = "bg-indigo-50 text-indigo-700 border-indigo-200";
+
+                                            const canRemove = rCode !== "CUSTOMER" && (
+                                              (rCode !== "ADMIN" && rCode !== "SUPER_ADMIN") || isActorSuperAdmin
+                                            );
+
+                                            return (
+                                              <span
+                                                key={ur.id}
+                                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold border ${badgeColor}`}
+                                              >
+                                                {rCode}
+                                                {canRemove && (
+                                                  <button
+                                                    onClick={() => handleRemoveRole(user.id, rCode)}
+                                                    className="ml-1 hover:text-red-950 font-bold focus:outline-none"
+                                                    title={`Remove role ${rCode}`}
+                                                  >
+                                                    ×
+                                                  </button>
+                                                )}
+                                              </span>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+
+                                      {/* Onboarding status helper text */}
+                                      <div className="text-[11px] space-y-1">
+                                        {user.roles?.some((ur: any) => ur.role.code === "RIDER") && (
+                                          <div className="text-slate-500">
+                                            Rider Status:{" "}
+                                            {user.rider ? (
+                                              <span className={`font-semibold ${user.rider.onboardingStatus === "APPROVED" || user.rider.status === "APPROVED" ? "text-green-600" : "text-amber-600"}`}>
+                                                {user.rider.onboardingStatus || user.rider.status}
+                                              </span>
+                                            ) : (
+                                              <span className="text-slate-400 italic">No rider profile created</span>
+                                            )}
+                                          </div>
+                                        )}
+                                        {user.roles?.some((ur: any) => ur.role.code === "VENDOR_OWNER" || ur.role.code === "VENDOR_STAFF") && (
+                                          <div className="text-slate-500">
+                                            Vendor Status:{" "}
+                                            {user.vendorStaff && user.vendorStaff.length > 0 ? (
+                                              <span className={`font-semibold ${user.vendorStaff[0].vendor?.onboardingStatus === "APPROVED" || user.vendorStaff[0].vendor?.status === "APPROVED" ? "text-green-600" : "text-amber-600"}`}>
+                                                {user.vendorStaff[0].vendor?.onboardingStatus || user.vendorStaff[0].vendor?.status}
+                                              </span>
+                                            ) : (
+                                              <span className="text-slate-400 italic">No vendor profile linked</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                      user.status === "ACTIVE"
+                                        ? "bg-green-50 text-green-700 border border-green-200"
+                                        : "bg-red-50 text-red-700 border border-red-200"
+                                    }`}>
+                                      {user.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    <div className="flex items-center gap-2">
+                                      <select
+                                        value={assigningRoleMap[user.id] || ""}
+                                        onChange={(e) =>
+                                          setAssigningRoleMap((prev) => ({
+                                            ...prev,
+                                            [user.id]: e.target.value
+                                          }))
+                                        }
+                                        className="rounded-lg border border-slate-350 px-3 py-1.5 text-xs bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                      >
+                                        <option value="">-- Select Role --</option>
+                                        <option value="VENDOR_OWNER">VENDOR_OWNER</option>
+                                        <option value="VENDOR_STAFF">VENDOR_STAFF</option>
+                                        <option value="RIDER">RIDER</option>
+                                        {isActorSuperAdmin && (
+                                          <>
+                                            <option value="ADMIN">ADMIN</option>
+                                            <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                                          </>
+                                        )}
+                                      </select>
+                                      <button
+                                        onClick={() => handleAssignRole(user.id)}
+                                        className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-semibold shadow-sm transition"
+                                      >
+                                        Assign
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
@@ -1045,10 +1314,10 @@ export default function AdminDashboard() {
                               <td className="px-5 py-3">
                                 <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
                                   order.status === "DELIVERED" || order.status === "COMPLETED"
-                                    ? "bg-green-50 text-green-700 border border-green-150"
+                                    ? "bg-green-50 text-green-700 border border-green-200"
                                     : order.status === "PLACED"
-                                    ? "bg-blue-50 text-blue-700 border border-blue-150 animate-pulse"
-                                    : "bg-amber-50 text-amber-700 border border-amber-150"
+                                    ? "bg-blue-50 text-blue-700 border border-blue-200 animate-pulse"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
                                 }`}>
                                   {order.status}
                                 </span>
@@ -1062,7 +1331,7 @@ export default function AdminDashboard() {
                                     onClick={() => {
                                       setShowAssignModal(order.id);
                                     }}
-                                    className="rounded bg-indigo-650 hover:bg-indigo-750 px-2 py-1 text-xs font-bold text-white shadow-sm"
+                                    className="rounded bg-indigo-600 hover:bg-indigo-700 px-2 py-1 text-xs font-bold text-white shadow-sm"
                                   >
                                     Assign
                                   </button>
@@ -1085,7 +1354,7 @@ export default function AdminDashboard() {
                                         }
                                       }
                                     }}
-                                    className="rounded border border-red-300 hover:bg-red-50 px-2 py-1 text-xs font-semibold text-red-650"
+                                    className="rounded border border-red-300 hover:bg-red-50 px-2 py-1 text-xs font-semibold text-red-600"
                                   >
                                     Cancel
                                   </button>
@@ -1346,7 +1615,7 @@ export default function AdminDashboard() {
                                     type="number"
                                     step="0.01"
                                     defaultValue={money(product.prices?.[0]?.price)}
-                                    className="w-16 rounded border px-1.5 py-0.5 text-xs text-slate-850"
+                                    className="w-16 rounded border px-1.5 py-0.5 text-xs text-slate-800"
                                   />
                                   <button
                                     onClick={() => {
@@ -1765,10 +2034,10 @@ export default function AdminDashboard() {
                           supportTickets.map((ticket) => (
                             <tr key={ticket.id} className="hover:bg-slate-50">
                               <td className="px-5 py-3 font-semibold">{ticket.subject}</td>
-                              <td className="px-5 py-3 font-bold text-red-650">{ticket.priority}</td>
+                              <td className="px-5 py-3 font-bold text-red-600">{ticket.priority}</td>
                               <td className="px-5 py-3">
                                 <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
-                                  ticket.status === "OPEN" ? "bg-amber-50 text-amber-700 border border-amber-150" : "bg-slate-100 text-slate-600"
+                                  ticket.status === "OPEN" ? "bg-amber-50 text-amber-700 border border-amber-100" : "bg-slate-100 text-slate-600"
                                 }`}>
                                   {ticket.status}
                                 </span>
@@ -1927,7 +2196,7 @@ export default function AdminDashboard() {
                         ) : (
                           auditLogs.map((log) => (
                             <tr key={log.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-3 font-semibold text-indigo-750">{log.action}</td>
+                              <td className="px-5 py-3 font-semibold text-indigo-700">{log.action}</td>
                               <td className="px-5 py-3">{log.entityType}</td>
                               <td className="px-5 py-3 text-slate-500 font-mono text-xs">{log.entityId}</td>
                               <td className="px-5 py-3 text-slate-600">{log.reason}</td>
@@ -2028,7 +2297,7 @@ export default function AdminDashboard() {
                     </div>
                     <button
                       onClick={() => saveConfig(apiUrl, authToken)}
-                      className="rounded bg-indigo-650 hover:bg-indigo-750 px-4 py-2 text-sm font-semibold text-white shadow"
+                      className="rounded bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold text-white shadow"
                     >
                       Save Configuration
                     </button>
@@ -2096,7 +2365,7 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded bg-indigo-650 hover:bg-indigo-750 text-white px-4 py-2 text-sm font-semibold"
+                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-semibold"
                 >
                   Submit
                 </button>
@@ -2152,7 +2421,7 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded bg-indigo-650 hover:bg-indigo-750 text-white px-4 py-2 text-sm font-semibold"
+                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-semibold"
                 >
                   Submit
                 </button>
@@ -2224,7 +2493,7 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded bg-indigo-650 hover:bg-indigo-750 text-white px-4 py-2 text-sm font-semibold"
+                  className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-semibold"
                 >
                   Submit
                 </button>
@@ -2641,7 +2910,7 @@ export default function AdminDashboard() {
                     </button>
                     <button
                       type="submit"
-                      className="rounded bg-indigo-650 hover:bg-indigo-750 text-white px-4 py-2 text-sm font-semibold shadow"
+                      className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-semibold shadow"
                     >
                       Save Ticket
                     </button>
@@ -2655,7 +2924,7 @@ export default function AdminDashboard() {
                   <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Ticket Event History</div>
                   <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
                     {!selectedTicket.events || selectedTicket.events.length === 0 ? (
-                      <div className="text-sm text-slate-550 italic">No events logged for this ticket.</div>
+                      <div className="text-sm text-slate-500 italic">No events logged for this ticket.</div>
                     ) : (
                       selectedTicket.events.map((event: any) => (
                         <div key={event.id} className="p-3 rounded border border-slate-100 bg-slate-50 text-xs">

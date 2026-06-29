@@ -104,6 +104,108 @@ async function main() {
     }
   });
 
+  const standardAdmin = await prisma.user.upsert({
+    where: { phone: "+918084901376" },
+    update: {},
+    create: {
+      phone: "+918084901376",
+      status: "ACTIVE"
+    }
+  });
+
+  const adminRole = await prisma.role.findUniqueOrThrow({
+    where: { code: "ADMIN" }
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: standardAdmin.id,
+        roleId: adminRole.id
+      }
+    },
+    update: {},
+    create: {
+      userId: standardAdmin.id,
+      roleId: adminRole.id
+    }
+  });
+
+  const riderRole = await prisma.role.findUniqueOrThrow({
+    where: { code: "RIDER" }
+  });
+  const vendorOwnerRole = await prisma.role.findUniqueOrThrow({
+    where: { code: "VENDOR_OWNER" }
+  });
+  const customerRole = await prisma.role.findUniqueOrThrow({
+    where: { code: "CUSTOMER" }
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: devAdmin.id, roleId: riderRole.id } },
+    update: {},
+    create: { userId: devAdmin.id, roleId: riderRole.id }
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: devAdmin.id, roleId: vendorOwnerRole.id } },
+    update: {},
+    create: { userId: devAdmin.id, roleId: vendorOwnerRole.id }
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: devAdmin.id, roleId: customerRole.id } },
+    update: {},
+    create: { userId: devAdmin.id, roleId: customerRole.id }
+  });
+
+  await prisma.rider.upsert({
+    where: { userId: devAdmin.id },
+    update: {},
+    create: {
+      userId: devAdmin.id,
+      name: "Dev Test Rider",
+      phone: "+917033475405",
+      vehicleType: "Two Wheeler",
+      vehicleNumber: "JH-15-A-1234",
+      serviceZoneId: "00000000-0000-4000-8000-000000000001",
+      isOnline: true,
+      status: "APPROVED",
+      onboardingStatus: "APPROVED"
+    }
+  });
+
+  const vendor = await prisma.vendor.upsert({
+    where: { id: "00000000-0000-4000-9000-000000000001" },
+    update: {},
+    create: {
+      id: "00000000-0000-4000-9000-000000000001",
+      shopName: "Dev Test Kitchen",
+      ownerName: "Dev Admin",
+      ownerPhone: "+917033475405",
+      categoryCode: "RESTAURANT_FOOD",
+      serviceZoneId: "00000000-0000-4000-8000-000000000001",
+      addressLine: "Jhajha Main Road",
+      city: "Jhajha",
+      state: "Bihar",
+      isOpen: true,
+      status: "APPROVED",
+      onboardingStatus: "APPROVED"
+    }
+  });
+
+  await prisma.vendorStaff.upsert({
+    where: { vendorId_userId: { vendorId: vendor.id, userId: devAdmin.id } },
+    update: {},
+    create: {
+      vendorId: vendor.id,
+      userId: devAdmin.id,
+      role: "OWNER",
+      status: "ACTIVE"
+    }
+  });
+
+
   await prisma.appVersion.upsert({
     where: { app_platform: { app: "CUSTOMER_APP", platform: "ANDROID" } },
     update: {},

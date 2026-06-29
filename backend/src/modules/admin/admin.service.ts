@@ -9,7 +9,8 @@ import {
   PaymentStatus,
   PayoutStatus,
   ProductCategoryCode,
-  Prisma
+  Prisma,
+  RoleCode
 } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { assertOrderTransition, OrderStatus } from "../orders/order-state.machine";
@@ -1468,5 +1469,217 @@ export class AdminService {
         }
       });
     }
+  }
+
+  async listUsers(phone?: string) {
+    const where: Prisma.UserWhereInput = {};
+    if (phone) {
+      where.phone = { contains: phone };
+    }
+    return this.prisma.user.findMany({
+      where,
+      take: 100,
+      orderBy: { createdAt: "desc" },
+      include: {
+        roles: {
+          include: {
+            role: true
+          }
+        },
+        rider: true,
+        vendorStaff: {
+          include: {
+            vendor: true
+          }
+        }
+      }
+    });
+  }
+
+  async getUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roles: {
+          include: {
+            role: true
+          }
+        },
+        rider: true,
+        vendorStaff: {
+          include: {
+            vendor: true
+          }
+        }
+      }
+    });
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    return user;
+  }
+
+  async assignRole(userId: string, roleCode: string, actorId: string) {
+    const validRoleCodes = Object.values(RoleCode);
+    if (!validRoleCodes.includes(roleCode as any)) {
+      throw new BadRequestException(`Invalid role code: ${roleCode}`);
+    }
+
+    // Verify actor privileges
+    const actorRoles = await this.prisma.userRole.findMany({
+      where: { userId: actorId },
+      include: { role: true }
+    });
+    const actorRoleCodes = actorRoles.map((ur) => ur.role.code);
+    const isSuperAdmin = actorRoleCodes.includes("SUPER_ADMIN");
+    const isAdmin = actorRoleCodes.includes("ADMIN");
+
+    if (!isSuperAdmin && !isAdmin) {
+      throw new BadRequestException("Actor does not have administrative privileges");
+    }
+
+    if (roleCode === "SUPER_ADMIN" || roleCode === "ADMIN") {
+      if (!isSuperAdmin) {
+        throw new BadRequestException("Only SUPER_ADMIN can assign ADMIN or SUPER_ADMIN roles");
+      }
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    let role = await this.prisma.role.findUnique({
+      where: { code: roleCode as any }
+    });
+    if (!role) {
+      role = await this.prisma.role.create({
+        data: {
+          code: roleCode as any,
+          name: roleCode.charAt(0) + roleCode.slice(1).toLowerCase().replace("_", " ")
+        }
+      });
+    }
+
+    const existingUserRole = await this.prisma.userRole.findUnique({
+      where: {
+        userId_roleId: {
+          userId,
+          roleId: role.id
+        }
+      }
+    });
+
+    if (existingUserRole) {
+      throw new BadRequestException("Role already assigned to this user");
+    }
+
+    const userRole = await this.prisma.userRole.create({
+      data: {
+        userId,
+        roleId: role.id,
+        assignedBy: actorId
+      },
+      include: {
+        role: true
+      }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.role_assigned",
+        entityType: "user",
+        entityId: userId,
+        reason: `Assigned role ${roleCode}`,
+        metadata: { role: roleCode }
+      }
+    });
+
+    return userRole;
+  }
+
+  async removeRole(userId: string, roleCode: string, actorId: string) {
+    const validRoleCodes = Object.values(RoleCode);
+    if (!validRoleCodes.includes(roleCode as any)) {
+      throw new BadRequestException(`Invalid role code: ${roleCode}`);
+    }
+
+    // Verify actor privileges
+    const actorRoles = await this.prisma.userRole.findMany({
+      where: { userId: actorId },
+      include: { role: true }
+    });
+    const actorRoleCodes = actorRoles.map((ur) => ur.role.code);
+    const isSuperAdmin = actorRoleCodes.includes("SUPER_ADMIN");
+    const isAdmin = actorRoleCodes.includes("ADMIN");
+
+    if (!isSuperAdmin && !isAdmin) {
+      throw new BadRequestException("Actor does not have administrative privileges");
+    }
+
+    if (roleCode === "SUPER_ADMIN" || roleCode === "ADMIN") {
+      if (!isSuperAdmin) {
+        throw new BadRequestException("Only SUPER_ADMIN can remove ADMIN or SUPER_ADMIN roles");
+      }
+    }
+
+    if (roleCode === "CUSTOMER") {
+      throw new BadRequestException("Removing CUSTOMER role is blocked to ensure user account integrity.");
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    const role = await this.prisma.role.findUnique({ where: { code: roleCode as any } });
+    if (!role) {
+      throw new NotFoundException("Role not found");
+    }
+
+    const userRole = await this.prisma.userRole.findUnique({
+      where: {
+        userId_roleId: {
+          userId,
+          roleId: role.id
+        }
+      }
+    });
+
+    if (!userRole) {
+      throw new BadRequestException("User does not have this role assigned");
+    }
+
+    if (roleCode === "SUPER_ADMIN") {
+      const count = await this.prisma.userRole.count({
+        where: { roleId: role.id }
+      });
+      if (count <= 1) {
+        throw new BadRequestException("Cannot remove the last SUPER_ADMIN from the system");
+      }
+    }
+
+    await this.prisma.userRole.delete({
+      where: {
+        userId_roleId: {
+          userId,
+          roleId: role.id
+        }
+      }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.role_removed",
+        entityType: "user",
+        entityId: userId,
+        reason: `Removed role ${roleCode}`,
+        metadata: { role: roleCode }
+      }
+    });
+
+    return { message: `Role ${roleCode} removed successfully` };
   }
 }

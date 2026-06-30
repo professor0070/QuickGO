@@ -25,6 +25,12 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
     if (_fcmInitialized) return;
     _fcmInitialized = true;
 
+    final isInitialized = ref.read(isFirebaseInitializedProvider);
+    if (!isInitialized) {
+      debugPrint('FCM initialization skipped: Firebase is not initialized.');
+      return;
+    }
+
     // Register partner device token with backend
     final client = ref.read(apiClientProvider);
     registerPartnerDeviceToken(client);

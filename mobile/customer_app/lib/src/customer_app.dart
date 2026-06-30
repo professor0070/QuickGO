@@ -25,6 +25,12 @@ class _CustomerAppState extends ConsumerState<CustomerApp> {
     if (_fcmInitialized) return;
     _fcmInitialized = true;
 
+    final isInitialized = ref.read(isFirebaseInitializedProvider);
+    if (!isInitialized) {
+      debugPrint('FCM initialization skipped: Firebase is not initialized.');
+      return;
+    }
+
     // Register device token with backend
     final client = ref.read(apiClientProvider);
     registerDeviceToken(client);

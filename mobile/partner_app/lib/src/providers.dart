@@ -7,6 +7,10 @@ final apiClientProvider = Provider<QuickGoApiClient>((ref) {
   return QuickGoApiClient();
 });
 
+final isFirebaseInitializedProvider = Provider<bool>((ref) {
+  throw UnimplementedError('Override this provider in ProviderScope');
+});
+
 final authRepositoryProvider = Provider<QuickGoAuthRepository>((ref) {
   final client = ref.watch(apiClientProvider);
   return QuickGoAuthRepository(client);

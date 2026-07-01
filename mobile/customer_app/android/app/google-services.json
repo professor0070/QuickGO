@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "714323232399",
+    "project_id": "quickgo-889ac",
+    "storage_bucket": "quickgo-889ac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:714323232399:android:a3c815438f67a68fd5d2fa",
+        "android_client_info": {
+          "package_name": "com.quickgo.customer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_242ONVVJelhC6rqcMsSZijuwfecq5HY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

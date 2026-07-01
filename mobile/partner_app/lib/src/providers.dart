@@ -16,6 +16,8 @@ final authRepositoryProvider = Provider<QuickGoAuthRepository>((ref) {
   return QuickGoAuthRepository(client);
 });
 
+enum PartnerMode { vendor, rider }
+
 class SessionState {
   SessionState({this.token, this.phone, this.userId, this.roles = const []});
   final String? token;
@@ -26,6 +28,16 @@ class SessionState {
   bool get isAuthenticated => token != null;
   bool get isVendor => roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
   bool get isRider => roles.contains('RIDER');
+
+  bool get hasVendorRole => roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
+  bool get hasRiderRole => roles.contains('RIDER');
+  bool get hasPartnerAccess => hasVendorRole || hasRiderRole;
+  bool get hasMultiplePartnerModes => hasVendorRole && hasRiderRole;
+  PartnerMode? get defaultPartnerMode {
+    if (hasVendorRole) return PartnerMode.vendor;
+    if (hasRiderRole) return PartnerMode.rider;
+    return null;
+  }
 }
 
 class SessionNotifier extends StateNotifier<SessionState> {
@@ -52,35 +64,35 @@ final sessionProvider = StateNotifierProvider<SessionNotifier, SessionState>((re
 final vendorDashboardProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final session = ref.watch(sessionProvider);
-  if (!session.isAuthenticated) return const {};
+  if (!session.isAuthenticated || !session.hasVendorRole) return const {};
   return client.getMap('/vendor/dashboard');
 });
 
 final vendorOrdersProvider = FutureProvider<List<dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final session = ref.watch(sessionProvider);
-  if (!session.isAuthenticated) return const [];
+  if (!session.isAuthenticated || !session.hasVendorRole) return const [];
   return client.getList('/vendor/orders');
 });
 
 final vendorProductsProvider = FutureProvider<List<dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final session = ref.watch(sessionProvider);
-  if (!session.isAuthenticated) return const [];
+  if (!session.isAuthenticated || !session.hasVendorRole) return const [];
   return client.getList('/vendor/products');
 });
 
 final vendorProfileProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final session = ref.watch(sessionProvider);
-  if (!session.isAuthenticated) return const {};
+  if (!session.isAuthenticated || !session.hasVendorRole) return const {};
   return client.getMap('/vendor/profile');
 });
 
 final vendorComplianceProvider = FutureProvider<List<dynamic>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final session = ref.watch(sessionProvider);
-  if (!session.isAuthenticated) return const [];
+  if (!session.isAuthenticated || !session.hasVendorRole) return const [];
   return client.getList('/vendor/compliance-documents');
 });
 

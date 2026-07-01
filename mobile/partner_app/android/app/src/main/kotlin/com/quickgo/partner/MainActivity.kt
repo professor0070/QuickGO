@@ -1,4 +1,4 @@
-package com.example.quickgo_partner_app
+package com.quickgo.partner
 
 import io.flutter.embedding.android.FlutterActivity
 

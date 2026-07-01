@@ -47,19 +47,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final rawRoles = user['roles'] as List<dynamic>? ?? const [];
       final roles = rawRoles.map((r) => r.toString()).toList();
 
-      final isVendor =
-          roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
-      final isRider = roles.contains('RIDER');
-      if (!isVendor && !isRider) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Unauthorized: Account is not registered as a partner.')),
-        );
-        return;
-      }
-
       ref.read(sessionProvider.notifier).authenticate(
             token,
             user['phone'] as String,

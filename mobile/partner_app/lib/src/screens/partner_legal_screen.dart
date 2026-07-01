@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:quickgo_shared_ui/quickgo_ui.dart';
-import '../partner_app.dart'; // To access PartnerMode
+import '../providers.dart'; // To access PartnerMode
 
 class PartnerLegalScreen extends StatelessWidget {
   const PartnerLegalScreen({super.key, required this.mode});

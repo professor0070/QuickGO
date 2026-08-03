@@ -1,3 +1,4 @@
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:quickgo_shared_api/quickgo_api_client.dart';
@@ -19,10 +20,11 @@ final authRepositoryProvider = Provider<QuickGoAuthRepository>((ref) {
 
 // Authenticated session state
 class SessionState {
-  SessionState({this.token, this.phone, this.userId});
+  SessionState({this.token, this.phone, this.userId, this.avatarUrl});
   final String? token;
   final String? phone;
   final String? userId;
+  final String? avatarUrl;
 
   bool get isAuthenticated => token != null;
 }
@@ -31,14 +33,31 @@ class SessionNotifier extends StateNotifier<SessionState> {
   SessionNotifier(this._client) : super(SessionState());
   final QuickGoApiClient _client;
 
-  void authenticate(String token, String phone, String userId) {
+  void authenticate(String token, String phone, String userId, {String? avatarUrl}) {
+    // Evict previous account's cached avatar images on identity change (Section G.7)
+    if (state.userId != null && state.userId != userId) {
+      PaintingBinding.instance.imageCache.clear();
+    }
     _client.setBearerToken(token);
-    state = SessionState(token: token, phone: phone, userId: userId);
+    state = SessionState(token: token, phone: phone, userId: userId, avatarUrl: avatarUrl);
+  }
+
+  void updateAvatarUrl(String avatarUrl) {
+    state = SessionState(
+      token: state.token,
+      phone: state.phone,
+      userId: state.userId,
+      avatarUrl: avatarUrl,
+    );
   }
 
   Future<void> logout() async {
     _client.setBearerToken('');
     state = SessionState();
+
+    // Evict cached avatar images to prevent previous-account data leaking (Section G.7)
+    PaintingBinding.instance.imageCache.clear();
+
     // Best-effort: remove common persisted keys so reopening app won't auto-login
     // Remove any auth token from the API client
     _client.setBearerToken('');
@@ -153,11 +172,8 @@ final searchedProductsProvider = FutureProvider<List<dynamic>>((ref) async {
   final query = ref.watch(searchQueryProvider);
   if (query.length < 2) return const [];
   final client = ref.watch(apiClientProvider);
-  final products = await client.getList('/catalog/products');
-  return products.where((p) {
-    final name = (p['name'] as String? ?? '').toLowerCase();
-    return name.contains(query.toLowerCase());
-  }).toList();
+  final encodedQuery = Uri.encodeComponent(query);
+  return client.getList('/catalog/products?search=$encodedQuery&limit=20');
 });
 
 // Notification list provider

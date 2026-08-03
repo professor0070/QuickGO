@@ -46,11 +46,29 @@ describe("QuickGO Phase 4 Vendor/Product/Category Flow (e2e)", () => {
     await app.close();
   });
 
-  async function login(phone: string) {
+  async function login(phone: string, appContext?: string) {
     const normalized = normalizeIndianPhone(phone);
+    let ctx = appContext;
+    if (!ctx) {
+      const user = (prisma as any).store.users.find((u: any) => normalizeIndianPhone(u.phone) === normalized);
+      if (user) {
+        const userRoles = (prisma as any).store.userRoles
+          .filter((ur: any) => ur.userId === user.id)
+          .map((ur: any) => (prisma as any).store.roles.find((r: any) => r.id === ur.roleId)?.code);
+        if (userRoles.includes("SUPER_ADMIN") || userRoles.includes("ADMIN") || userRoles.includes("ZONE_ADMIN")) {
+          ctx = "ADMIN";
+        } else if (userRoles.includes("RIDER") || userRoles.includes("VENDOR_OWNER") || userRoles.includes("VENDOR_STAFF")) {
+          ctx = "PARTNER";
+        } else {
+          ctx = "CUSTOMER";
+        }
+      } else {
+        ctx = "CUSTOMER";
+      }
+    }
     const response = await request(app.getHttpServer())
       .post("/api/v1/auth/verify-otp")
-      .send({ phone: normalized, otp: "123456" })
+      .send({ phone: normalized, otp: "123456", appContext: ctx })
       .expect(201);
     return response.body.data.access_token as string;
   }

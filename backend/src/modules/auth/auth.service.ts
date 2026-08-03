@@ -1,4 +1,4 @@
-import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { Inject, Injectable, UnauthorizedException, BadRequestException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../common/prisma.service";
 import { DomainEventBus } from "../internal-events/domain-event-bus.service";
@@ -26,7 +26,15 @@ export class AuthService {
     return { message: "OTP sent if phone is valid.", data: null };
   }
 
-  async verifyOtp(phone: string, otp: string) {
+  async verifyOtp(phone: string, otp: string, appContext: string) {
+    if (!appContext) {
+      throw new BadRequestException("appContext is required");
+    }
+    const validContexts = ["CUSTOMER", "PARTNER", "ADMIN"];
+    if (!validContexts.includes(appContext)) {
+      throw new BadRequestException("Invalid appContext");
+    }
+
     const normalized = normalizeIndianPhone(phone);
     const valid = await this.otpProvider.verify(normalized, otp, "LOGIN");
     if (!valid) {
@@ -79,12 +87,31 @@ export class AuthService {
     if (!user) throw new Error("User resolution failed after verifyOtp");
     const finalUser: any = user;
     const roles = finalUser.roles.map((item: any) => item.role.code);
-    const payload = { sub: finalUser.id, phone: finalUser.phone, roles };
+
+    // Validate role eligibility based on requested appContext
+    if (appContext === "PARTNER") {
+      const hasPartnerRole = roles.some((r: string) => r === "RIDER" || r === "VENDOR_OWNER" || r === "VENDOR_STAFF");
+      if (!hasPartnerRole) {
+        throw new UnauthorizedException("Access denied: missing partner roles");
+      }
+    } else if (appContext === "ADMIN") {
+      const hasAdminRole = roles.some((r: string) => r === "ADMIN" || r === "SUPER_ADMIN" || r === "ZONE_ADMIN");
+      if (!hasAdminRole) {
+        throw new UnauthorizedException("Access denied: missing admin roles");
+      }
+    }
+
+    const payload = { sub: finalUser.id, phone: finalUser.phone, roles, appContext };
     await this.eventBus.publish(
       "auth.otp_verified",
-      { userId: finalUser.id, phone: finalUser.phone, roles },
+      { userId: finalUser.id, phone: finalUser.phone, roles, appContext },
       { source: "auth.service" }
     );
+
+    // Resolve context-specific avatar without fallback to legacy avatarUrl
+    const avatarUrl = appContext === "PARTNER"
+      ? (finalUser.partnerAvatarUrl || null)
+      : (finalUser.customerAvatarUrl || null);
 
     return {
       data: {
@@ -93,7 +120,8 @@ export class AuthService {
         user: {
           id: finalUser.id,
           phone: finalUser.phone,
-          roles
+          roles,
+          avatarUrl: avatarUrl
         }
       },
       message: "OTP verified"

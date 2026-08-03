@@ -14,6 +14,7 @@ export type DomainEventMap = {
     userId: string;
     phone: string;
     roles: string[];
+    appContext: string;
   };
   "order.placed": {
     orderId: string;
@@ -93,6 +94,17 @@ export type DomainEventMap = {
   };
   "compliance.privacy_request_updated": {
     requestId: string;
+  };
+  "compliance.bank_details_submitted": {
+    versionId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+  };
+  "compliance.document_submitted": {
+    documentId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    type: string;
   };
 };
 

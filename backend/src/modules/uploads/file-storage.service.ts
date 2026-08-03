@@ -5,7 +5,7 @@ import {
   UploadApiResponse,
   v2 as cloudinary
 } from "cloudinary";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
 import { join } from "path";
 
 export const FILE_STORAGE = Symbol("FILE_STORAGE");
@@ -42,6 +42,7 @@ export type StoreFileOptions = {
 
 export interface FileStorageService {
   upload(file: UploadedFile, options: StoreFileOptions): Promise<StoredFile>;
+  delete(publicId: string, resourceType: string): Promise<void>;
 }
 
 export class LocalFileStorageService implements FileStorageService {
@@ -61,6 +62,25 @@ export class LocalFileStorageService implements FileStorageService {
       format: ext,
       originalName: file.originalname
     };
+  }
+
+  async delete(publicId: string, resourceType: string): Promise<void> {
+    const filePath = join(process.cwd(), "public", "uploads", publicId);
+    try {
+      if (existsSync(filePath)) {
+        unlinkSync(filePath);
+      } else {
+        // Fallback: publicId might have folder prefix or suffix. Let's check extensions too
+        for (const ext of Object.values(EXTENSION_BY_MIME_TYPE)) {
+          const pathWithExt = `${filePath}.${ext}`;
+          if (existsSync(pathWithExt)) {
+            unlinkSync(pathWithExt);
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to delete local file ${filePath}:`, e);
+    }
   }
 }
 
@@ -108,6 +128,23 @@ export class CloudinaryFileStorageService implements FileStorageService {
       );
 
       stream.end(file.buffer);
+    });
+  }
+
+  async delete(publicId: string, resourceType: string): Promise<void> {
+    this.assertConfigured();
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.destroy(
+        publicId,
+        { resource_type: resourceType },
+        (error, result) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        }
+      );
     });
   }
 

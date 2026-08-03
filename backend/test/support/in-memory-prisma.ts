@@ -499,7 +499,9 @@ export class InMemoryPrismaService {
         }
         Object.assign(document, data, { updatedAt: new Date() });
         return document;
-      }
+      },
+      findFirst: async ({ where }: any) =>
+        this.store.vendorComplianceDocuments.find((item) => this.matches(item, where)) ?? null,
     };
 
     this.rider = {
@@ -569,7 +571,9 @@ export class InMemoryPrismaService {
         }
         Object.assign(document, data, { updatedAt: new Date() });
         return document;
-      }
+      },
+      findFirst: async ({ where }: any) =>
+        this.store.riderKycDocuments.find((item) => this.matches(item, where)) ?? null,
     };
 
     this.product = {

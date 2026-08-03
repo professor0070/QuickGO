@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
@@ -8,6 +8,7 @@ type JwtPayload = {
   sub: string;
   phone: string;
   roles: string[];
+  appContext?: string;
 };
 
 @Injectable()
@@ -21,10 +22,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): RequestUser {
+    if (!payload.appContext) {
+      throw new UnauthorizedException("JWT missing valid signed context");
+    }
+    const validContexts = ["CUSTOMER", "PARTNER", "ADMIN"];
+    if (!validContexts.includes(payload.appContext)) {
+      throw new UnauthorizedException("JWT missing valid signed context");
+    }
     return {
       id: payload.sub,
       phone: payload.phone,
-      roles: payload.roles
+      roles: payload.roles,
+      appContext: payload.appContext
     };
   }
 }

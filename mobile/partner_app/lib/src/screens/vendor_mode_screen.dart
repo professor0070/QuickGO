@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quickgo_shared_ui/quickgo_ui.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import '../providers.dart';
+import '../widgets/partner_profile_card.dart';
+import 'partner_navigation.dart';
 
 class VendorModeScreen extends ConsumerStatefulWidget {
   const VendorModeScreen({super.key});
@@ -18,13 +23,113 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    final initialTab = ref.read(vendorTabIndexProvider);
+    _tabController = TabController(length: 4, vsync: this, initialIndex: initialTab);
+    _tabController.addListener(() {
+      if (!mounted) return;
+      final currentProviderVal = ref.read(vendorTabIndexProvider);
+      if (currentProviderVal != _tabController.index) {
+        ref.read(vendorTabIndexProvider.notifier).state = _tabController.index;
+      }
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitComplianceDocument() async {
+    final typeController = TextEditingController(text: 'FSSAI');
+    final docNumberController = TextEditingController();
+    String? selectedImagePath;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Submit Compliance Document'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: typeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Document type',
+                    hintText: 'FSSAI, GST, PAN, AADHAAR, SHOP_LICENSE',
+                  ),
+                ),
+                TextField(
+                  controller: docNumberController,
+                  decoration: const InputDecoration(labelText: 'Document Number (Optional)'),
+                ),
+                const SizedBox(height: 16),
+                if (selectedImagePath != null) ...[
+                  Text('Selected File: ${selectedImagePath!.split('/').last}', style: const TextStyle(fontSize: 12, color: Colors.green)),
+                  const SizedBox(height: 8),
+                ],
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.photo_library),
+                  onPressed: () async {
+                    final picker = ImagePicker();
+                    final file = await picker.pickImage(source: ImageSource.gallery);
+                    if (file != null) {
+                      setDialogState(() {
+                        selectedImagePath = file.path;
+                      });
+                    }
+                  },
+                  label: const Text('Choose Document Image'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selectedImagePath == null
+                  ? null
+                  : () => Navigator.pop(context, true),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != true || selectedImagePath == null) return;
+
+    setState(() => _submitting = true);
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.uploadFile(
+        '/partner/documents/upload',
+        selectedImagePath!,
+        'file',
+        {
+          'type': typeController.text.trim(),
+          'reason': 'Vendor Compliance Upload',
+          if (docNumberController.text.trim().isNotEmpty) 'document_number': docNumberController.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Compliance document submitted successfully!')),
+      );
+      ref.invalidate(vendorComplianceProvider);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      setState(() => _submitting = false);
+    }
   }
 
   Future<void> _toggleShopStatus(bool val) async {
@@ -144,121 +249,26 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
   }
 
   void _showProductForm({Map<String, dynamic>? product}) {
-    final nameController = TextEditingController(text: product?['name']);
-    final unitController =
-        TextEditingController(text: product?['unit'] ?? 'kg');
-    final priceController = TextEditingController(
-        text: product?['prices'] != null &&
-                (product!['prices'] as List).isNotEmpty
-            ? product['prices'][0]['price'].toString()
-            : '100');
-    final mrpController =
-        TextEditingController(text: product?['mrp']?.toString() ?? '100');
-    final descController = TextEditingController(text: product?['description']);
-    final catIdController =
-        TextEditingController(text: product?['categoryId'] ?? 'cat-1');
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          top: 16,
-          left: 16,
-          right: 16,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Text(
-              product == null ? 'Create Product' : 'Edit Product',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name')),
-            TextField(
-                controller: unitController,
-                decoration:
-                    const InputDecoration(labelText: 'Unit (e.g. kg, g, pcs)')),
-            TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Price')),
-            TextField(
-                controller: mrpController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'MRP')),
-            TextField(
-                controller: descController,
-                decoration: const InputDecoration(labelText: 'Description')),
-            if (product == null)
-              TextField(
-                  controller: catIdController,
-                  decoration:
-                      const InputDecoration(labelText: 'Category Code or ID')),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(this.context);
-                final price = double.tryParse(priceController.text) ?? 0.0;
-                final mrp = double.tryParse(mrpController.text) ?? price;
-                if (price > mrp) {
-                  messenger.showSnackBar(const SnackBar(
-                      content: Text('Price cannot be greater than MRP')));
-                  return;
-                }
-                Navigator.pop(context);
-                try {
-                  final client = ref.read(apiClientProvider);
-                  if (product == null) {
-                    // Try listing categories first to grab an ID or use catIdController
-                    var catId = catIdController.text;
-                    try {
-                      final categories =
-                          await client.getList('/catalog/categories');
-                      if (categories.isNotEmpty) {
-                        catId = categories[0]['id'];
-                      }
-                    } catch (_) {}
-
-                    await client.postMap('/vendor/products', {
-                      'category_id': catId,
-                      'name': nameController.text,
-                      'unit': unitController.text,
-                      'price': price,
-                      'mrp': mrp,
-                      'description': descController.text,
-                    });
-                  } else {
-                    await client.patchMap('/vendor/products/${product['id']}', {
-                      'name': nameController.text,
-                      'unit': unitController.text,
-                      'price': price,
-                      'mrp': mrp,
-                      'description': descController.text,
-                    });
-                  }
-                  ref.invalidate(vendorProductsProvider);
-                } catch (e) {
-                  messenger.showSnackBar(
-                    SnackBar(content: Text('Failed to save product: $e')),
-                  );
-                }
-              },
-              child: const Text('Save Product'),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ProductFormDialog(
+        client: ref.read(apiClientProvider),
+        ref: ref,
+        product: product,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(vendorTabIndexProvider, (previous, next) {
+      if (_tabController.index != next) {
+        _tabController.animateTo(next);
+      }
+    });
+
     final dashboardAsync = ref.watch(vendorDashboardProvider);
     final ordersAsync = ref.watch(vendorOrdersProvider);
     final productsAsync = ref.watch(vendorProductsProvider);
@@ -266,21 +276,6 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
     final complianceAsync = ref.watch(vendorComplianceProvider);
 
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: TabBar(
-          controller: _tabController,
-          labelColor: quickGoGreen,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: quickGoGreen,
-          tabs: const [
-            Tab(icon: Icon(Icons.dashboard), text: 'Dashboard'),
-            Tab(icon: Icon(Icons.shopping_bag), text: 'Orders'),
-            Tab(icon: Icon(Icons.inventory_2), text: 'Catalog'),
-            Tab(icon: Icon(Icons.person), text: 'Profile'),
-          ],
-        ),
-      ),
       body: TabBarView(
         controller: _tabController,
         children: [
@@ -588,41 +583,65 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
                     final city = profile['city'] as String? ?? '';
                     final state = profile['state'] as String? ?? '';
                     final isVerified = profile['isVerified'] as bool? ?? false;
+                    final userMap = profile['user'] as Map<String, dynamic>?;
+                    final avatarUrl = userMap?['avatarUrl'] as String?;
 
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        PartnerProfileCard(
+                          name: ownerName.isNotEmpty ? ownerName : 'Vendor Owner',
+                          phone: userMap?['phone'] as String? ?? profile['ownerPhone'] as String? ?? '',
+                          roleLabel: 'Vendor',
+                          avatarUrl: avatarUrl,
+                          isVerified: isVerified,
+                          onUploadSuccess: () {
+                            ref.invalidate(vendorProfileProvider);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Store Info',
-                                    style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold)),
-                                Chip(
-                                  label: Text(isVerified
-                                      ? 'Verified'
-                                      : 'Pending Verification'),
-                                  backgroundColor: isVerified
-                                      ? Colors.green.shade100
-                                      : Colors.orange.shade100,
+                                Wrap(
+                                  alignment: WrapAlignment.spaceBetween,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    const Text('Store Info',
+                                        style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold)),
+                                    Chip(
+                                      label: Text(
+                                        isVerified
+                                            ? 'Verified'
+                                            : 'Pending Verification',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      backgroundColor: isVerified
+                                          ? Colors.green.shade100
+                                          : Colors.orange.shade100,
+                                    ),
+                                  ],
                                 ),
+                                const Divider(height: 24),
+                                Text('Shop Name: $shopName',
+                                    style: const TextStyle(
+                                        fontSize: 15, fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 6),
+                                Text('Owner Name: $ownerName'),
+                                const SizedBox(height: 6),
+                                Text('Address: $addressLine, $city, $state'),
                               ],
                             ),
-                            const Divider(height: 24),
-                            Text('Shop Name: $shopName',
-                                style: const TextStyle(
-                                    fontSize: 15, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 6),
-                            Text('Owner Name: $ownerName'),
-                            const SizedBox(height: 6),
-                            Text('Address: $addressLine, $city, $state'),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   },
                   loading: () =>
@@ -631,9 +650,22 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
                       Center(child: Text('Error loading profile: $err')),
                 ),
                 const SizedBox(height: 16),
-                const Text('Compliance Documents Status',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    const Text('Compliance Documents Status',
+                        style:
+                            TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    TextButton.icon(
+                      icon: const Icon(Icons.upload_file),
+                      onPressed: _submitting ? null : _submitComplianceDocument,
+                      label: const Text('Upload Document'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 complianceAsync.when(
                   data: (docs) {
@@ -685,6 +717,35 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
           ),
         ],
       ),
+      bottomNavigationBar: QuickGoPartnerAnimatedBottomNav(
+        selectedIndex: ref.watch(vendorTabIndexProvider),
+        onTap: (index) {
+          _tabController.animateTo(index);
+          ref.read(vendorTabIndexProvider.notifier).state = index;
+        },
+        items: const [
+          NavTabItem(
+            label: 'Dashboard',
+            activeIcon: Icons.dashboard_rounded,
+            inactiveIcon: Icons.dashboard_outlined,
+          ),
+          NavTabItem(
+            label: 'Orders',
+            activeIcon: Icons.receipt_long_rounded,
+            inactiveIcon: Icons.receipt_long_outlined,
+          ),
+          NavTabItem(
+            label: 'Catalog',
+            activeIcon: Icons.storefront_rounded,
+            inactiveIcon: Icons.storefront_outlined,
+          ),
+          NavTabItem(
+            label: 'Profile',
+            activeIcon: Icons.person_rounded,
+            inactiveIcon: Icons.person_outlined,
+          ),
+        ],
+      ),
     );
   }
 
@@ -707,6 +768,521 @@ class _VendorModeScreenState extends ConsumerState<VendorModeScreen>
                 style:
                     const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductFormDialog extends StatefulWidget {
+  const _ProductFormDialog({
+    required this.client,
+    required this.ref,
+    this.product,
+  });
+
+  final QuickGoApiClient client;
+  final WidgetRef ref;
+  final Map<String, dynamic>? product;
+
+  @override
+  State<_ProductFormDialog> createState() => _ProductFormDialogState();
+}
+
+class _ProductFormDialogState extends State<_ProductFormDialog> {
+  late TextEditingController _nameController;
+  late TextEditingController _unitController;
+  late TextEditingController _priceController;
+  late TextEditingController _mrpController;
+  late TextEditingController _descController;
+
+  String? _selectedCategoryId;
+  List<dynamic> _categories = [];
+  bool _loadingCategories = true;
+
+  String? _pickedLocalImagePath;
+  String? _uploadedImageUrl;
+  bool _uploadingImage = false;
+  bool _savingProduct = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.product?['name']);
+    _unitController = TextEditingController(text: widget.product?['unit'] ?? 'pcs');
+    _priceController = TextEditingController(
+      text: widget.product?['prices'] != null && (widget.product!['prices'] as List).isNotEmpty
+          ? widget.product!['prices'][0]['price'].toString()
+          : '100',
+    );
+    _mrpController = TextEditingController(
+      text: widget.product?['mrp']?.toString() ?? '100',
+    );
+    _descController = TextEditingController(text: widget.product?['description']);
+    _selectedCategoryId = widget.product?['categoryId'];
+    _uploadedImageUrl = widget.product?['imageUrl'];
+
+    _fetchCategories();
+  }
+
+  Future<void> _fetchCategories() async {
+    try {
+      final list = await widget.client.getList('/catalog/categories');
+      if (mounted) {
+        setState(() {
+          _categories = list;
+          _loadingCategories = false;
+          if (_selectedCategoryId == null && _categories.isNotEmpty) {
+            _selectedCategoryId = _categories[0]['id'];
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingCategories = false;
+        });
+      }
+    }
+  }
+
+  String _resolveUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    final base = widget.client.baseUrl.replaceAll('/api/v1', '');
+    return '$base${path.startsWith('/') ? '' : '/'}$path';
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    try {
+      final file = await picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (file == null) return;
+
+      final size = await file.length();
+      if (size > 5 * 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image file too large (max 5MB)')),
+        );
+        return;
+      }
+
+      if (widget.product != null) {
+        // Edit mode: upload immediately
+        setState(() {
+          _uploadingImage = true;
+        });
+        try {
+          final res = await widget.client.uploadFile(
+            '/vendor/products/${widget.product!['id']}/image',
+            file.path,
+            'file',
+            {'reason': 'Product image update'},
+          );
+          if (mounted) {
+            setState(() {
+              _uploadedImageUrl = res['imageUrl'];
+              _uploadingImage = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Image uploaded successfully')),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() {
+              _uploadingImage = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Image upload failed: $e')),
+            );
+          }
+        }
+      } else {
+        // Create mode: store path for upload during submission
+        setState(() {
+          _pickedLocalImagePath = file.path;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearImage() async {
+    if (widget.product != null) {
+      setState(() {
+        _uploadingImage = true;
+      });
+      try {
+        await widget.client.patchMap('/vendor/products/${widget.product!['id']}', {
+          'image_url': '',
+        });
+        if (mounted) {
+          setState(() {
+            _uploadedImageUrl = null;
+            _uploadingImage = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image removed')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _uploadingImage = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove image: $e')),
+          );
+        }
+      }
+    } else {
+      setState(() {
+        _pickedLocalImagePath = null;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    final price = double.tryParse(_priceController.text) ?? 0.0;
+    final mrp = double.tryParse(_mrpController.text) ?? price;
+
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product name is required')),
+      );
+      return;
+    }
+
+    if (price <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Price must be greater than zero')),
+      );
+      return;
+    }
+
+    if (price > mrp) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Price cannot be greater than MRP')),
+      );
+      return;
+    }
+
+    if (_selectedCategoryId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a category')),
+      );
+      return;
+    }
+
+    setState(() {
+      _savingProduct = true;
+    });
+
+    try {
+      if (widget.product == null) {
+        // Create Mode
+        final res = await widget.client.postMap('/vendor/products', {
+          'category_id': _selectedCategoryId,
+          'name': _nameController.text.trim(),
+          'unit': _unitController.text.trim(),
+          'price': price,
+          'mrp': mrp,
+          'description': _descController.text.trim(),
+        });
+
+        final createdProductId = res['id'];
+
+        if (_pickedLocalImagePath != null && createdProductId != null) {
+          await widget.client.uploadFile(
+            '/vendor/products/$createdProductId/image',
+            _pickedLocalImagePath!,
+            'file',
+            {'reason': 'Product creation image upload'},
+          );
+        }
+      } else {
+        // Edit Mode
+        await widget.client.patchMap('/vendor/products/${widget.product!['id']}', {
+          'name': _nameController.text.trim(),
+          'unit': _unitController.text.trim(),
+          'price': price,
+          'mrp': mrp,
+          'description': _descController.text.trim(),
+          'image_url': _uploadedImageUrl ?? '',
+        });
+      }
+
+      if (mounted) {
+        widget.ref.invalidate(vendorProductsProvider);
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _savingProduct = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save product: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasImage = _pickedLocalImagePath != null || (_uploadedImageUrl != null && _uploadedImageUrl!.isNotEmpty);
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        top: 24,
+        left: 20,
+        right: 20,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.product == null ? 'Create Product' : 'Edit Product',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: quickGoTextDark,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              Center(
+                child: Container(
+                  height: 140,
+                  width: 140,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: quickGoLine),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        if (_pickedLocalImagePath != null)
+                          Image.file(
+                            File(_pickedLocalImagePath!),
+                            fit: BoxFit.cover,
+                            height: 140,
+                            width: 140,
+                          )
+                        else if (_uploadedImageUrl != null && _uploadedImageUrl!.isNotEmpty)
+                          Image.network(
+                            _resolveUrl(_uploadedImageUrl),
+                            fit: BoxFit.cover,
+                            height: 140,
+                            width: 140,
+                            errorBuilder: (context, error, stackTrace) => const Icon(
+                              Icons.broken_image_outlined,
+                              size: 40,
+                              color: Colors.redAccent,
+                            ),
+                          )
+                        else
+                          const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_a_photo_outlined,
+                                size: 36,
+                                color: quickGoTextLight,
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Add Photo',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: quickGoTextLight,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (_uploadingImage)
+                          Container(
+                            color: Colors.black38,
+                            child: const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                    label: const Text('Camera'),
+                    onPressed: _uploadingImage ? null : () => _pickImage(ImageSource.camera),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.photo_library_outlined, size: 16),
+                    label: const Text('Gallery'),
+                    onPressed: _uploadingImage ? null : () => _pickImage(ImageSource.gallery),
+                  ),
+                  if (hasImage) ...[
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                      label: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+                      onPressed: _uploadingImage ? null : _clearImage,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Product Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              if (widget.product == null) ...[
+                _loadingCategories
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    : DropdownButtonFormField<String>(
+                        value: _selectedCategoryId,
+                        decoration: const InputDecoration(
+                          labelText: 'Product Category',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _categories.map<DropdownMenuItem<String>>((c) {
+                          return DropdownMenuItem<String>(
+                            value: c['id'],
+                            child: Text(c['name'] ?? 'Category'),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedCategoryId = val;
+                          });
+                        },
+                      ),
+                const SizedBox(height: 16),
+              ],
+
+              TextField(
+                controller: _unitController,
+                decoration: const InputDecoration(
+                  labelText: 'Unit (e.g. kg, g, pcs)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _priceController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Price (INR)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _mrpController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'MRP (INR)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: _descController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              if (_savingProduct)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: LinearProgressIndicator(color: quickGoPrimary),
+                ),
+
+              FilledButton(
+                onPressed: _savingProduct || _uploadingImage ? null : _save,
+                style: FilledButton.styleFrom(
+                  backgroundColor: quickGoPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  widget.product == null ? 'Create Product' : 'Save Product',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );

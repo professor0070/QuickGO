@@ -6,7 +6,7 @@ void main() {
   testWidgets('renders customer login screen', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: CustomerApp()));
 
-    expect(find.text('QuickGO Login'), findsOneWidget);
+    expect(find.text('Welcome to QuickGO'), findsOneWidget);
     expect(find.text('Send OTP'), findsOneWidget);
   });
 }

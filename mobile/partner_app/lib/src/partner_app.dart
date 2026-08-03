@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quickgo_partner_app/src/screens/login_screen.dart';
@@ -8,6 +9,7 @@ import 'package:quickgo_shared_ui/quickgo_ui.dart';
 import 'providers.dart';
 import 'screens/partner_support_screen.dart';
 import 'screens/partner_legal_screen.dart';
+import 'screens/role_selection_screen.dart';
 
 class PartnerApp extends ConsumerStatefulWidget {
   const PartnerApp({super.key});
@@ -18,8 +20,15 @@ class PartnerApp extends ConsumerStatefulWidget {
 
 class _PartnerAppState extends ConsumerState<PartnerApp> {
   var _loggedIn = false;
-  var _mode = PartnerMode.vendor;
   bool _fcmInitialized = false;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  PartnerMode _getCurrentMode() {
+    final session = ref.read(sessionProvider);
+    return session.selectedPartnerMode ??
+        (session.defaultPartnerMode ?? PartnerMode.vendor);
+  }
 
   void _initFcm() {
     if (_fcmInitialized) return;
@@ -41,35 +50,93 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
       final body = message.notification?.body ?? '';
       if (!mounted) return;
 
+      // Extract order details from payload data
+      final payloadStr = message.data['payload'] as String?;
+      Map<String, dynamic>? payload;
+      if (payloadStr != null) {
+        try {
+          payload = jsonDecode(payloadStr) as Map<String, dynamic>?;
+        } catch (_) {}
+      }
+      final orderId = payload?['orderId'] ?? message.data['orderId'] as String?;
+
       // If notification looks like a new order alert, show a prominent dialog
       final isOrderAlert = title.toLowerCase().contains('order') ||
           title.toLowerCase().contains('delivery');
       if (isOrderAlert) {
         showDialog(
-          context: context,
-          builder: (c) => AlertDialog(
-            title: Text(title),
-            content: Text(body),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c),
-                child: const Text('Dismiss'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(c);
-                  ref.invalidate(vendorOrdersProvider);
-                  ref.invalidate(riderOrdersProvider);
-                  ref.invalidate(riderDashboardProvider);
-                  ref.invalidate(vendorDashboardProvider);
-                },
-                child: const Text('View Orders'),
-              ),
-            ],
-          ),
+          context: _navigatorKey.currentContext!,
+          builder: (c) {
+            final currentMode = _getCurrentMode();
+            return AlertDialog(
+              title: Text(title),
+              content: Text(body),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c),
+                  child: const Text('Dismiss'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(c);
+                    ref.read(vendorTabIndexProvider.notifier).state = 1;
+                    ref.invalidate(vendorOrdersProvider);
+                    ref.invalidate(riderOrdersProvider);
+                    ref.invalidate(riderDashboardProvider);
+                    ref.invalidate(vendorDashboardProvider);
+                  },
+                  child: const Text('View Orders'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    Navigator.pop(c);
+                    if (orderId == null || orderId.isEmpty) {
+                      _scaffoldMessengerKey.currentState?.showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Cannot accept order: missing order identity.')),
+                      );
+                      return;
+                    }
+                    try {
+                      final client = ref.read(apiClientProvider);
+                      if (currentMode == PartnerMode.rider) {
+                        await client.postMap(
+                          '/rider/orders/$orderId/accept',
+                          {},
+                          idempotencyKey:
+                              'rider-accept-$orderId-${DateTime.now().millisecondsSinceEpoch}',
+                        );
+                      } else {
+                        await client.postMap(
+                          '/vendor/orders/$orderId/accept',
+                          {},
+                          idempotencyKey:
+                              'vendor-accept-$orderId-${DateTime.now().millisecondsSinceEpoch}',
+                        );
+                      }
+                      _scaffoldMessengerKey.currentState?.showSnackBar(
+                        const SnackBar(
+                            content: Text('Order accepted successfully!')),
+                      );
+                    } catch (e) {
+                      _scaffoldMessengerKey.currentState?.showSnackBar(
+                        SnackBar(content: Text('Failed to accept order: $e')),
+                      );
+                    }
+                    ref.invalidate(vendorOrdersProvider);
+                    ref.invalidate(riderOrdersProvider);
+                    ref.invalidate(riderDashboardProvider);
+                    ref.invalidate(vendorDashboardProvider);
+                  },
+                  child: const Text('Accept'),
+                ),
+              ],
+            );
+          },
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        _scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(body.isNotEmpty ? '$title: $body' : title),
             duration: const Duration(seconds: 4),
@@ -95,7 +162,8 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
 
     Widget homeWidget;
     if (!_loggedIn) {
-      homeWidget = LoginScreen(onVerified: () => setState(() => _loggedIn = true));
+      homeWidget =
+          LoginScreen(onVerified: () => setState(() => _loggedIn = true));
     } else if (!session.hasPartnerAccess) {
       homeWidget = Scaffold(
         appBar: AppBar(
@@ -132,44 +200,25 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
           ),
         ),
       );
+    } else if (session.selectedPartnerMode == null) {
+      homeWidget = const RoleSelectionScreen();
     } else {
-      final canUseRider = session.hasRiderRole;
-      final canSwitchModes = session.hasMultiplePartnerModes;
-      final resolvedMode = canSwitchModes
-          ? _mode
-          : (session.defaultPartnerMode ?? PartnerMode.vendor);
+      final resolvedMode = session.selectedPartnerMode!;
 
       homeWidget = Scaffold(
         appBar: AppBar(
           title: const Text('QuickGO Partner'),
           actions: [
-            if (canSwitchModes)
-              SegmentedButton<PartnerMode>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
-                    value: PartnerMode.vendor,
-                    label: Text('Vendor'),
-                  ),
-                  ButtonSegment(
-                    value: PartnerMode.rider,
-                    label: Text('Rider'),
-                  ),
-                ],
-                selected: {resolvedMode},
-                onSelectionChanged: (selection) =>
-                    setState(() => _mode = selection.first),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Center(
-                  child: Text(
-                    canUseRider ? 'Rider' : 'Vendor',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: Text(
+                  resolvedMode == PartnerMode.rider ? 'Rider' : 'Vendor',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 16),
                 ),
               ),
+            ),
           ],
         ),
         drawer: Drawer(
@@ -187,16 +236,21 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
                     const CircleAvatar(
                       radius: 30,
                       backgroundColor: Colors.white,
-                      child: Icon(Icons.business_center, color: quickGoGreen, size: 30),
+                      child: Icon(Icons.business_center,
+                          color: quickGoGreen, size: 30),
                     ),
                     const SizedBox(height: 12),
                     const Text(
                       'QuickGO Partner',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold),
                     ),
                     Text(
                       session.phone ?? 'Partner session',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
                 ),
@@ -205,10 +259,12 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
                 leading: const Icon(Icons.help_outline),
                 title: const Text('Help & Support'),
                 onTap: () {
-                  Navigator.pop(context); // close drawer
+                  final activeContext = _navigatorKey.currentContext!;
+                  Navigator.pop(activeContext); // close drawer
                   Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (c) => const PartnerSupportScreen()),
+                    activeContext,
+                    MaterialPageRoute(
+                        builder: (c) => const PartnerSupportScreen()),
                   );
                 },
               ),
@@ -216,35 +272,43 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
                 leading: const Icon(Icons.gavel),
                 title: const Text('Policies & Agreements'),
                 onTap: () {
-                  Navigator.pop(context); // close drawer
+                  final activeContext = _navigatorKey.currentContext!;
+                  Navigator.pop(activeContext); // close drawer
                   Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (c) => PartnerLegalScreen(mode: resolvedMode)),
+                    activeContext,
+                    MaterialPageRoute(
+                        builder: (c) => PartnerLegalScreen(mode: resolvedMode)),
                   );
                 },
               ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
-                title: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
+                title: const Text('Logout',
+                    style: TextStyle(color: Colors.redAccent)),
                 onTap: () async {
+                  final dialogContext = _navigatorKey.currentContext!;
                   final confirm = await showDialog<bool>(
-                    context: context,
+                    context: dialogContext,
                     builder: (c) => AlertDialog(
                       title: const Text('Logout?'),
                       content: const Text('Are you sure you want to logout?'),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Logout')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(c, false),
+                            child: const Text('Cancel')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(c, true),
+                            child: const Text('Logout')),
                       ],
                     ),
                   );
                   if (confirm == true) {
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext); // close drawer
+                    }
                     ref.read(sessionProvider.notifier).logout();
                     setState(() => _loggedIn = false);
-                    if (context.mounted) {
-                      Navigator.pop(context); // close drawer if open
-                    }
                   }
                 },
               ),
@@ -255,30 +319,40 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
             ? ref.watch(vendorProfileProvider).when(
                   data: (profile) {
                     final isVerified = profile['isVerified'] as bool? ?? false;
-                    final status = profile['status'] ?? profile['onboardingStatus'] ?? '';
+                    final status =
+                        profile['status'] ?? profile['onboardingStatus'] ?? '';
                     if (profile.isEmpty) {
-                      return const Center(child: Text('No vendor profile found. Please contact support.'));
+                      return const Center(
+                          child: Text(
+                              'No vendor profile found. Please contact support.'));
                     }
                     if (!isVerified && status != 'APPROVED') {
-                      return const PendingVerificationScreen(mode: PartnerMode.vendor);
+                      return const PendingVerificationScreen(
+                          mode: PartnerMode.vendor);
                     }
                     return const VendorModeScreen();
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (err, _) => Center(child: Text('Error: $err')),
                 )
             : ref.watch(riderProfileProvider).when(
                   data: (profile) {
-                    final status = profile['status'] ?? profile['onboardingStatus'] ?? '';
+                    final status =
+                        profile['status'] ?? profile['onboardingStatus'] ?? '';
                     if (profile.isEmpty) {
-                      return const Center(child: Text('No rider profile found. Please contact support.'));
+                      return const Center(
+                          child: Text(
+                              'No rider profile found. Please contact support.'));
                     }
                     if (status != 'APPROVED') {
-                      return const PendingVerificationScreen(mode: PartnerMode.rider);
+                      return const PendingVerificationScreen(
+                          mode: PartnerMode.rider);
                     }
                     return const RiderModeScreen();
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (err, _) => Center(child: Text('Error: $err')),
                 ),
       );
@@ -287,7 +361,12 @@ class _PartnerAppState extends ConsumerState<PartnerApp> {
     return MaterialApp(
       title: 'QuickGO Partner',
       theme: quickGoTheme(),
-      home: homeWidget,
+      navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _scaffoldMessengerKey,
+      debugShowCheckedModeBanner: false,
+      home: Builder(
+        builder: (context) => homeWidget,
+      ),
     );
   }
 }
@@ -306,7 +385,8 @@ class PendingVerificationScreen extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.verified_user_outlined, size: 80, color: Colors.orangeAccent),
+            const Icon(Icons.verified_user_outlined,
+                size: 80, color: Colors.orangeAccent),
             const SizedBox(height: 24),
             Text(
               'Pending $modeLabel Approval',
@@ -318,7 +398,8 @@ class PendingVerificationScreen extends ConsumerWidget {
               'Your $modeLabel partner profile is pending verification from the QuickGO Operations team. '
               'Please ensure all compliance documents/KYC details have been uploaded in the Profile tab.',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15, color: Colors.grey, height: 1.4),
+              style: const TextStyle(
+                  fontSize: 15, color: Colors.grey, height: 1.4),
             ),
             const SizedBox(height: 32),
             FilledButton.icon(

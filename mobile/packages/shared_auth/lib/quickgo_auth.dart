@@ -35,11 +35,12 @@ class QuickGoAuthRepository {
     });
   }
 
-  Future<Map<String, dynamic>> verifyOtp(String phone, String otp) {
+  Future<Map<String, dynamic>> verifyOtp(String phone, String otp, {String? appContext}) {
     final normalized = normalizeIndianPhone(phone);
     return _api.postMap('/auth/verify-otp', {
       'phone': normalized,
       'otp': otp,
+      if (appContext != null) 'appContext': appContext,
       'device': {
         'platform': 'ANDROID',
         'app_version': '1.0.0',

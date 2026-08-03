@@ -16,8 +16,39 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<{ user?: { roles?: string[] } }>();
-    const roles = request.user?.roles ?? [];
+    const request = context.switchToHttp().getRequest<{ user?: { roles?: string[]; appContext?: string } }>();
+    const user = request.user;
+    if (!user || !user.appContext) {
+      return false;
+    }
+
+    const appContext = user.appContext;
+    const roles = user.roles ?? [];
+
+    // Enforce strict appContext routing boundaries to prevent dual-role token reuse
+    if (appContext === "CUSTOMER") {
+      const hasPartnerOrAdminRequired = required.some((role) =>
+        ["RIDER", "VENDOR_OWNER", "VENDOR_STAFF", "ADMIN", "SUPER_ADMIN", "ZONE_ADMIN"].includes(role)
+      );
+      if (hasPartnerOrAdminRequired) {
+        return false;
+      }
+    } else if (appContext === "PARTNER") {
+      const hasCustomerOrAdminRequired = required.some((role) =>
+        ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "ZONE_ADMIN"].includes(role)
+      );
+      if (hasCustomerOrAdminRequired) {
+        return false;
+      }
+    } else if (appContext === "ADMIN") {
+      const hasCustomerOrPartnerRequired = required.some((role) =>
+        ["CUSTOMER", "RIDER", "VENDOR_OWNER", "VENDOR_STAFF"].includes(role)
+      );
+      if (hasCustomerOrPartnerRequired) {
+        return false;
+      }
+    }
+
     return required.some((role) => roles.includes(role));
   }
 }

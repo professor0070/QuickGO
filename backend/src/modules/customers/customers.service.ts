@@ -18,13 +18,34 @@ export class CustomersService {
 
   async profile(userId: string) {
     const customer = await this.getOrCreateCustomer(userId);
-    return this.prisma.customer.findUnique({
+    const profile = await this.prisma.customer.findUnique({
       where: { id: customer.id },
       include: {
-        user: { select: { id: true, phone: true, status: true } },
+        user: {
+          select: {
+            id: true,
+            phone: true,
+            status: true,
+            customerAvatarUrl: true,
+            customerAvatarUpdatedAt: true
+          }
+        },
         addresses: { orderBy: { createdAt: "desc" } }
       }
     });
+    if (!profile) return null;
+
+    const resolvedAvatarUrl = profile.user.customerAvatarUrl || null;
+    return {
+      ...profile,
+      user: {
+        id: profile.user.id,
+        phone: profile.user.phone,
+        status: profile.user.status,
+        avatarUrl: resolvedAvatarUrl,
+        avatarUpdatedAt: profile.user.customerAvatarUpdatedAt
+      }
+    };
   }
 
   async updateProfile(userId: string, dto: UpdateCustomerProfileDto) {

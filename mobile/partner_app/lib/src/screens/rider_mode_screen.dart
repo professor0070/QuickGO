@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:quickgo_shared_ui/quickgo_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../providers.dart';
+import '../widgets/partner_profile_card.dart';
+import 'partner_navigation.dart';
 
 class RiderModeScreen extends ConsumerStatefulWidget {
   const RiderModeScreen({super.key});
@@ -12,8 +15,30 @@ class RiderModeScreen extends ConsumerStatefulWidget {
   ConsumerState<RiderModeScreen> createState() => _RiderModeScreenState();
 }
 
-class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
+class _RiderModeScreenState extends ConsumerState<RiderModeScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   var _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialTab = ref.read(riderTabIndexProvider);
+    _tabController = TabController(length: 4, vsync: this, initialIndex: initialTab);
+    _tabController.addListener(() {
+      if (!mounted) return;
+      final currentProviderVal = ref.read(riderTabIndexProvider);
+      if (currentProviderVal != _tabController.index) {
+        ref.read(riderTabIndexProvider.notifier).state = _tabController.index;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<void> _toggleOnlineStatus(bool val) async {
     setState(() => _submitting = true);
@@ -98,54 +123,94 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
 
   Future<void> _submitKycDocument() async {
     final typeController = TextEditingController(text: 'ID_PROOF');
-    final urlController = TextEditingController();
-    final result = await showDialog<Map<String, String>>(
+    final docNumberController = TextEditingController();
+    String? selectedImagePath;
+
+    final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Submit KYC Document'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: typeController,
-                decoration:
-                    const InputDecoration(labelText: 'Document type'),
-              ),
-              TextField(
-                controller: urlController,
-                decoration:
-                    const InputDecoration(labelText: 'Document URL/reference'),
-              ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Submit KYC Document'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: typeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Document type',
+                    hintText: 'ID_PROOF, ADDRESS_PROOF, DRIVING_LICENSE, VEHICLE_RC',
+                  ),
+                ),
+                TextField(
+                  controller: docNumberController,
+                  decoration: const InputDecoration(labelText: 'Document Number (Optional)'),
+                ),
+                const SizedBox(height: 16),
+                if (selectedImagePath != null) ...[
+                  Text('Selected File: ${selectedImagePath!.split('/').last}', style: const TextStyle(fontSize: 12, color: Colors.green)),
+                  const SizedBox(height: 8),
+                ],
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.photo_library),
+                  onPressed: () async {
+                    final picker = ImagePicker();
+                    final file = await picker.pickImage(source: ImageSource.gallery);
+                    if (file != null) {
+                      setDialogState(() {
+                        selectedImagePath = file.path;
+                      });
+                    }
+                  },
+                  label: const Text('Choose Document Image'),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selectedImagePath == null
+                  ? null
+                  : () => Navigator.pop(context, true),
+              child: const Text('Submit'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, {
-              'type': typeController.text.trim(),
-              'document_url': urlController.text.trim(),
-            }),
-            child: const Text('Submit'),
-          ),
-        ],
       ),
     );
-    if (result == null ||
-        result['type']!.isEmpty ||
-        result['document_url']!.isEmpty) {
-      return;
-    }
 
-    await _runAction(
-      () => ref.read(apiClientProvider).postMap('/rider/kyc-documents', result),
-      successMessage: 'KYC document submitted',
-      refresh: () => ref.invalidate(riderKycDocumentsProvider),
-    );
+    if (result != true || selectedImagePath == null) return;
+
+    setState(() => _submitting = true);
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.uploadFile(
+        '/partner/documents/upload',
+        selectedImagePath!,
+        'file',
+        {
+          'type': typeController.text.trim(),
+          'reason': 'Rider KYC Upload',
+          if (docNumberController.text.trim().isNotEmpty) 'document_number': docNumberController.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('KYC document submitted successfully!')),
+      );
+      ref.invalidate(riderKycDocumentsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      setState(() => _submitting = false);
+    }
   }
 
   Future<void> _acceptOrder(String orderId) async {
@@ -416,94 +481,189 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(riderTabIndexProvider, (previous, next) {
+      if (_tabController.index != next) {
+        _tabController.animateTo(next);
+      }
+    });
+
     final dashboardAsync = ref.watch(riderDashboardProvider);
     final profileAsync = ref.watch(riderProfileProvider);
     final kycAsync = ref.watch(riderKycDocumentsProvider);
     final ordersAsync = ref.watch(riderOrdersProvider);
     final historyAsync = ref.watch(riderOrderHistoryProvider);
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        QuickGoSection(
-          title: 'Rider Home',
-          children: [
-            if (_submitting) const LinearProgressIndicator(),
-            dashboardAsync.when(
-              data: (data) => SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: data['online'] == true,
-                onChanged: _submitting ? null : _toggleOnlineStatus,
-                title: const Text('Online'),
-                subtitle: const Text('Accept assignments only when available'),
-              ),
-              loading: () => const ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Loading rider status...'),
-              ),
-              error: (err, _) => Text('Dashboard error: $err'),
+    return Scaffold(
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // Tab 0: Dashboard
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(riderDashboardProvider);
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                QuickGoSection(
+                  title: 'Rider Home',
+                  children: [
+                    if (_submitting) const LinearProgressIndicator(),
+                    dashboardAsync.when(
+                      data: (data) => SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: data['online'] == true,
+                        onChanged: _submitting ? null : _toggleOnlineStatus,
+                        title: const Text('Online'),
+                        subtitle: const Text('Accept assignments only when available'),
+                      ),
+                      loading: () => const ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('Loading rider status...'),
+                      ),
+                      error: (err, _) => Text('Dashboard error: $err'),
+                    ),
+                    dashboardAsync.when(
+                      data: _buildDashboardChips,
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            dashboardAsync.when(
-              data: _buildDashboardChips,
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+          ),
+
+          // Tab 1: Assigned Deliveries
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(riderOrdersProvider);
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                QuickGoSection(
+                  title: 'Assigned Orders',
+                  children: [
+                    ordersAsync.when(
+                      data: (orders) {
+                        if (orders.isEmpty) {
+                          return const ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text('No assigned orders'),
+                            subtitle: Text('Pickup and drop details appear here.'),
+                          );
+                        }
+                        return Column(
+                          children: orders
+                              .map<Widget>((raw) =>
+                                  _buildOrderCard(raw as Map<String, dynamic>))
+                              .toList(),
+                        );
+                      },
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (err, _) => Text('Orders error: $err'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-        QuickGoSection(
-          title: 'Profile & KYC',
-          children: [
-            profileAsync.when(
-              data: (profile) => _buildProfile(profile),
-              loading: () => const ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Loading profile...'),
-              ),
-              error: (err, _) => Text('Profile error: $err'),
+          ),
+
+          // Tab 2: Order History
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(riderOrderHistoryProvider);
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                QuickGoSection(
+                  title: 'Order History',
+                  children: [
+                    historyAsync.when(
+                      data: _buildHistory,
+                      loading: () => const Text('Loading history...'),
+                      error: (err, _) => Text('History error: $err'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            kycAsync.when(
-              data: _buildKycList,
-              loading: () => const Text('Loading KYC documents...'),
-              error: (err, _) => Text('KYC error: $err'),
+          ),
+
+          // Tab 3: Profile & KYC
+          RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(riderProfileProvider);
+              ref.invalidate(riderKycDocumentsProvider);
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                QuickGoSection(
+                  title: 'Profile & KYC',
+                  children: [
+                    profileAsync.when(
+                      data: (profile) => _buildProfile(profile),
+                      loading: () => const ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('Loading profile...'),
+                      ),
+                      error: (err, _) => Text('Profile error: $err'),
+                    ),
+                    const SizedBox(height: 8),
+                    kycAsync.when(
+                      data: _buildKycList,
+                      loading: () => const Text('Loading KYC documents...'),
+                      error: (err, _) => Text('KYC error: $err'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    ref.read(sessionProvider.notifier).logout();
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Logout'),
+                  style: ElevatedButton.styleFrom(foregroundColor: Colors.red),
+                ),
+              ],
             ),
-          ],
-        ),
-        QuickGoSection(
-          title: 'Assigned Orders',
-          children: [
-            ordersAsync.when(
-              data: (orders) {
-                if (orders.isEmpty) {
-                  return const ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('No assigned orders'),
-                    subtitle: Text('Pickup and drop details appear here.'),
-                  );
-                }
-                return Column(
-                  children: orders
-                      .map<Widget>((raw) =>
-                          _buildOrderCard(raw as Map<String, dynamic>))
-                      .toList(),
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Text('Orders error: $err'),
-            ),
-          ],
-        ),
-        QuickGoSection(
-          title: 'Order History',
-          children: [
-            historyAsync.when(
-              data: _buildHistory,
-              loading: () => const Text('Loading history...'),
-              error: (err, _) => Text('History error: $err'),
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
+      bottomNavigationBar: QuickGoPartnerAnimatedBottomNav(
+        selectedIndex: ref.watch(riderTabIndexProvider),
+        onTap: (index) {
+          _tabController.animateTo(index);
+          ref.read(riderTabIndexProvider.notifier).state = index;
+        },
+        items: const [
+          NavTabItem(
+            label: 'Dashboard',
+            activeIcon: Icons.dashboard_rounded,
+            inactiveIcon: Icons.dashboard_outlined,
+          ),
+          NavTabItem(
+            label: 'Deliveries',
+            activeIcon: Icons.delivery_dining_rounded,
+            inactiveIcon: Icons.delivery_dining_outlined,
+          ),
+          NavTabItem(
+            label: 'History',
+            activeIcon: Icons.history_rounded,
+            inactiveIcon: Icons.history_outlined,
+          ),
+          NavTabItem(
+            label: 'Profile',
+            activeIcon: Icons.person_rounded,
+            inactiveIcon: Icons.person_outlined,
+          ),
+        ],
+      ),
     );
   }
 
@@ -531,22 +691,37 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
       );
     }
     final zone = profile['serviceZone'] as Map<String, dynamic>?;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(profile['name']?.toString() ?? 'Rider'),
-      subtitle: Text(
-        [
-          'Phone: ${profile['phone'] ?? '-'}',
-          'Vehicle: ${profile['vehicleType'] ?? '-'} ${profile['vehicleNumber'] ?? ''}',
-          'Zone: ${zone?['name'] ?? '-'}',
-          'Status: ${profile['onboardingStatus'] ?? profile['status'] ?? '-'}',
-        ].join('\n'),
-      ),
-      isThreeLine: true,
-      trailing: OutlinedButton(
-        onPressed: _submitting ? null : () => _editProfile(profile),
-        child: const Text('Edit'),
-      ),
+    final userMap = profile['user'] as Map<String, dynamic>?;
+    final avatarUrl = userMap?['avatarUrl'] as String?;
+    final isVerified = profile['isVerified'] as bool? ?? false;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PartnerProfileCard(
+          name: profile['name']?.toString() ?? 'Rider',
+          phone: profile['phone']?.toString() ?? userMap?['phone']?.toString() ?? '',
+          roleLabel: 'Rider',
+          avatarUrl: avatarUrl,
+          isVerified: isVerified,
+          subDetails: [
+            'Vehicle: ${profile['vehicleType'] ?? '-'} ${profile['vehicleNumber'] ?? ''}',
+            'Zone: ${zone?['name'] ?? '-'}',
+          ],
+          onUploadSuccess: () {
+            ref.invalidate(riderProfileProvider);
+          },
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.edit, size: 16),
+            onPressed: _submitting ? null : () => _editProfile(profile),
+            label: const Text('Edit Profile Details'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -642,7 +817,10 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
                   onPressed: () => _openMaps('Customer drop', dropAddress),
                   child: const Text('Drop Map'),
                 ),
-                if (status == 'RIDER_ASSIGNED' && acceptedAt == null) ...[
+                if ((status == 'RIDER_ASSIGNED' ||
+                        status == 'PREPARING_OR_PACKING' ||
+                        status == 'READY_FOR_PICKUP') &&
+                    acceptedAt == null) ...[
                   FilledButton(
                     onPressed: _submitting ? null : () => _acceptOrder(orderId),
                     child: const Text('Accept'),
@@ -652,13 +830,18 @@ class _RiderModeScreenState extends ConsumerState<RiderModeScreen> {
                     child: const Text('Reject'),
                   ),
                 ],
-                if (status == 'RIDER_ASSIGNED' && acceptedAt != null)
+                if ((status == 'RIDER_ASSIGNED' ||
+                        status == 'PREPARING_OR_PACKING' ||
+                        status == 'READY_FOR_PICKUP') &&
+                    acceptedAt != null)
                   OutlinedButton.icon(
                     onPressed: _submitting ? null : () => _markArrived(orderId),
                     icon: const Icon(Icons.location_on),
                     label: const Text('Arrived'),
                   ),
-                if (status == 'RIDER_ASSIGNED')
+                if ((status == 'RIDER_ASSIGNED' ||
+                        status == 'READY_FOR_PICKUP') &&
+                    acceptedAt != null)
                   FilledButton(
                     onPressed: _submitting ? null : () => _markPickedUp(orderId),
                     child: const Text('Picked Up'),

@@ -901,7 +901,7 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   it("hardens admin uploads with content validation, protected document storage, and audit logs", async () => {
     const adminToken = await login("9999999999");
     const setup = await createOperationalSetup(adminToken, "9411111111", "9411111112");
-    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+    const jpeg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
     const pdf = Buffer.from("%PDF-1.4\n%QuickGO test document\n", "ascii");
 
     const productImage = await request(app.getHttpServer())
@@ -1079,11 +1079,29 @@ describe("QuickGO MVP backend flow (e2e)", () => {
     }
   });
 
-  async function login(phone: string) {
+  async function login(phone: string, appContext?: string) {
     const normalized = normalizeIndianPhone(phone);
+    let ctx = appContext;
+    if (!ctx) {
+      const user = (prisma as any).store.users.find((u: any) => normalizeIndianPhone(u.phone) === normalized);
+      if (user) {
+        const userRoles = (prisma as any).store.userRoles
+          .filter((ur: any) => ur.userId === user.id)
+          .map((ur: any) => (prisma as any).store.roles.find((r: any) => r.id === ur.roleId)?.code);
+        if (userRoles.includes("SUPER_ADMIN") || userRoles.includes("ADMIN") || userRoles.includes("ZONE_ADMIN")) {
+          ctx = "ADMIN";
+        } else if (userRoles.includes("RIDER") || userRoles.includes("VENDOR_OWNER") || userRoles.includes("VENDOR_STAFF")) {
+          ctx = "PARTNER";
+        } else {
+          ctx = "CUSTOMER";
+        }
+      } else {
+        ctx = "CUSTOMER";
+      }
+    }
     const response = await request(app.getHttpServer())
       .post("/api/v1/auth/verify-otp")
-      .send({ phone: normalized, otp: "123456" })
+      .send({ phone: normalized, otp: "123456", appContext: ctx })
       .expect(201);
     return response.body.data.access_token as string;
   }

@@ -22,6 +22,7 @@ dependencies:
     path: ../packages/shared_notifications
   quickgo_shared_ui:
     path: ../packages/shared_ui
+  image_picker: ^1.1.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

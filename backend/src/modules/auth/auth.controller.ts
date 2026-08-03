@@ -17,7 +17,7 @@ export class AuthController {
   @Public()
   @Post("verify-otp")
   verifyOtp(@Body() body: VerifyOtpDto) {
-    return this.authService.verifyOtp(body.phone, body.otp);
+    return this.authService.verifyOtp(body.phone, body.otp, body.appContext);
   }
 
   @Get("me")

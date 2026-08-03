@@ -133,3 +133,28 @@ export class VendorUpdateProductDto {
   image_url?: string;
 }
 
+export class SubmitBankDetailsDto {
+  @IsString()
+  account_holder!: string;
+
+  @IsString()
+  account_number!: string;
+
+  @IsString()
+  bank_name!: string;
+
+  @IsString()
+  ifsc_code!: string;
+
+  @IsOptional()
+  @IsString()
+  branch_name?: string;
+
+  @IsOptional()
+  @IsString()
+  upi_id?: string;
+
+  @IsOptional()
+  @IsString()
+  document_url?: string;
+}

@@ -4,8 +4,10 @@ import { CloudinaryFileStorageService, LocalFileStorageService, FILE_STORAGE } f
 import { UploadsController } from "./uploads.controller";
 import { UploadsService } from "./uploads.service";
 
+import { InternalEventsModule } from "../internal-events/internal-events.module";
+
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, InternalEventsModule],
   controllers: [UploadsController],
   providers: [
     UploadsService,

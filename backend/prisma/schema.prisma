@@ -15,6 +15,7 @@ enum RoleCode {
   ADMIN
   SUPER_ADMIN
   SUPPORT
+  ZONE_ADMIN
 }
 
 enum UserStatus {
@@ -32,6 +33,10 @@ enum OnboardingStatus {
   PAUSED
   BLOCKED
   SUSPENDED
+  TERMINATION_PENDING
+  AGREEMENT_TERMINATED
+  OFFBOARDED
+  ARCHIVED
 }
 
 enum ProductCategoryCode {
@@ -193,6 +198,21 @@ model User {
   email           String?
   isPhoneVerified Boolean          @default(false)
   status          UserStatus       @default(ACTIVE)
+  avatarUrl       String?
+  avatarStorageKey String?
+  avatarMimeType   String?
+  avatarSizeBytes  Int?
+  avatarUpdatedAt  DateTime?
+  customerAvatarUrl        String?
+  customerAvatarStorageKey String?
+  customerAvatarMimeType   String?
+  customerAvatarSizeBytes  Int?
+  customerAvatarUpdatedAt  DateTime?
+  partnerAvatarUrl         String?
+  partnerAvatarStorageKey  String?
+  partnerAvatarMimeType    String?
+  partnerAvatarSizeBytes   Int?
+  partnerAvatarUpdatedAt   DateTime?
   lastLoginAt     DateTime?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -313,6 +333,7 @@ model Vendor {
   settlements      Settlement[]
   payouts          VendorPayout[]
   payoutRecords    Payout[]
+  bankDetails      BankDetails?
 
   @@index([serviceZoneId, isOpen])
   @@index([status, fssaiStatus])
@@ -343,10 +364,22 @@ model VendorComplianceDocument {
   type        String
   documentUrl String
   status      ComplianceStatus @default(PENDING)
-  expiresAt   DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  vendor      Vendor           @relation(fields: [vendorId], references: [id])
+  expiresAt              DateTime?
+  documentNumberMasked   String?
+  documentNumberEncrypted String?
+  originalFileName       String?
+  mimeType               String?
+  sizeBytes              Int?
+  checksum               String?
+  rejectionReason        String?
+  reviewedAt             DateTime?
+  reviewedByAdminId      String?
+  supersededByDocumentId String?
+  revokedAt              DateTime?
+  archivedAt             DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+  vendor                 Vendor           @relation(fields: [vendorId], references: [id])
 
   @@index([vendorId, status])
 }
@@ -373,6 +406,7 @@ model Rider {
   deliveryProofs   DeliveryProof[]
   payouts          RiderPayout[]
   payoutRecords    Payout[]
+  bankDetails      BankDetails?
 
   @@index([serviceZoneId, isOnline])
   @@index([status])
@@ -386,10 +420,22 @@ model RiderKycDocument {
   riderId     String
   type        String
   documentUrl String
-  status      ComplianceStatus @default(PENDING)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  rider       Rider            @relation(fields: [riderId], references: [id])
+  status                 ComplianceStatus @default(PENDING)
+  documentNumberMasked   String?
+  documentNumberEncrypted String?
+  originalFileName       String?
+  mimeType               String?
+  sizeBytes              Int?
+  checksum               String?
+  rejectionReason        String?
+  reviewedAt             DateTime?
+  reviewedByAdminId      String?
+  supersededByDocumentId String?
+  revokedAt              DateTime?
+  archivedAt             DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+  rider                  Rider            @relation(fields: [riderId], references: [id])
 
   @@index([riderId, status])
 }
@@ -401,13 +447,20 @@ model ServiceZone {
   state           String
   centerLatitude  Decimal  @db.Decimal(10, 7)
   centerLongitude Decimal  @db.Decimal(10, 7)
-  radiusKm        Decimal  @default(3.0) @db.Decimal(5, 2)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  vendors         Vendor[]
-  riders          Rider[]
-  orders          Order[]
+  radiusKm              Decimal                 @default(3.0) @db.Decimal(5, 2)
+  isActive              Boolean                 @default(true)
+  status                String                  @default("ACTIVE")
+  polygonJson           String?
+  operatingHours        String?
+  createdBySuperAdminId String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  vendors               Vendor[]
+  riders                Rider[]
+  orders                Order[]
+  pincodes              ServiceZonePincode[]
+  adminAssignments      AdminZoneAssignment[]
+  partnerAssignments    PartnerZoneAssignment[]
 
   @@index([city, isActive])
 }
@@ -431,6 +484,10 @@ model Product {
   name            String
   description     String?
   imageUrl        String?
+  imageStorageKey String?
+  imageMimeType   String?
+  imageSizeBytes  Int?
+  imageUpdatedAt DateTime?
   unit            String
   productType     String           @default("FOOD")
   isStockManaged  Boolean          @default(false)
@@ -933,20 +990,22 @@ model PrivacyRequest {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  actorId    String?
-  action     String
-  entityType String
-  entityId   String?
-  reason     String?
-  ipAddress  String?
-  userAgent  String?
-  metadata   Json?
-  createdAt  DateTime @default(now())
-  actor      User?    @relation("ActorAuditLogs", fields: [actorId], references: [id])
+  id            String   @id @default(uuid())
+  actorId       String?
+  action        String
+  entityType    String
+  entityId      String?
+  serviceZoneId String?
+  reason        String?
+  ipAddress     String?
+  userAgent     String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  actor         User?    @relation("ActorAuditLogs", fields: [actorId], references: [id])
 
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
+  @@index([serviceZoneId])
 }
 
 model AppVersion {
@@ -1086,4 +1145,86 @@ model InvoiceReceipt {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   order         Order    @relation(fields: [orderId], references: [id])
+}
+
+model ServiceZonePincode {
+  id            String      @id @default(uuid())
+  serviceZoneId String
+  pincode       String
+  isPrimary     Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  serviceZone   ServiceZone @relation(fields: [serviceZoneId], references: [id])
+
+  @@unique([serviceZoneId, pincode])
+  @@index([pincode])
+}
+
+model AdminZoneAssignment {
+  id                     String      @id @default(uuid())
+  adminUserId            String
+  serviceZoneId          String
+  status                 String      @default("ACTIVE") // ACTIVE, REVOKED
+  assignedBySuperAdminId String
+  assignedAt             DateTime    @default(now())
+  revokedAt              DateTime?
+  revocationReason       String?
+  serviceZone            ServiceZone @relation(fields: [serviceZoneId], references: [id])
+
+  @@index([adminUserId])
+  @@index([serviceZoneId])
+}
+
+model PartnerZoneAssignment {
+  id            String      @id @default(uuid())
+  partnerUserId String
+  partnerType   String      // VENDOR, RIDER
+  serviceZoneId String
+  status        String      @default("ACTIVE") // ACTIVE, REVOKED
+  assignedBy    String
+  assignedAt    DateTime    @default(now())
+  revokedAt     DateTime?
+  serviceZone   ServiceZone @relation(fields: [serviceZoneId], references: [id])
+
+  @@index([partnerUserId])
+  @@index([serviceZoneId])
+}
+
+model BankDetails {
+  id                String   @id @default(uuid())
+  vendorId          String?  @unique
+  riderId           String?  @unique
+  accountHolderName String
+  accountNumber     String
+  ifsc              String
+  bankName          String?
+  branch            String?
+  upiId             String?
+  proofDocumentUrl  String?
+  status            String   @default("PENDING") // PENDING, VERIFIED, REJECTED
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  vendor            Vendor?  @relation(fields: [vendorId], references: [id])
+  rider             Rider?   @relation(fields: [riderId], references: [id])
+}
+
+model BankDetailVersion {
+  id                String    @id @default(uuid())
+  vendorId          String?
+  riderId           String?
+  accountHolderName String
+  accountNumber     String
+  ifsc              String
+  bankName          String?
+  branch            String?
+  upiId             String?
+  proofDocumentUrl  String?
+  status            String    @default("PENDING_REVIEW") // PENDING_REVIEW, APPROVED, REJECTED, SUPERSEDED
+  rejectionReason   String?
+  reviewedByAdminId String?
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([vendorId])
+  @@index([riderId])
 }

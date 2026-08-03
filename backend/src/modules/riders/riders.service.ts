@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
 import { PaymentMethod, Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { assertOrderTransition, OrderStatus } from "../orders/order-state.machine";
@@ -8,12 +8,18 @@ import {
   RejectAssignedOrderDto,
   SubmitDeliveryProofDto,
   ToggleRiderOnlineDto,
-  UpdateRiderProfileDto
+  UpdateRiderProfileDto,
+  SubmitBankDetailsDto
 } from "./rider.dto";
+
+import { DomainEventBus } from "../internal-events/domain-event-bus.service";
 
 @Injectable()
 export class RidersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventBus: DomainEventBus
+  ) {}
 
   async profile(userId: string) {
     const rider = await this.prisma.rider.findUnique({
@@ -27,7 +33,32 @@ export class RidersService {
     if (!rider) {
       throw new NotFoundException("Rider profile not found for user");
     }
-    return rider;
+
+    const required = ["AADHAAR", "PAN", "DRIVING_LICENSE"];
+    const approvedTypes = (rider.kycDocuments || [])
+      .filter((doc: any) => doc.status === "APPROVED")
+      .map((doc: any) => doc.type);
+    const documentsOk = required.every(t => approvedTypes.includes(t));
+
+    const isVerified = (rider.status === "APPROVED" || rider.onboardingStatus === "APPROVED") &&
+      rider.serviceZone?.isActive === true &&
+      documentsOk;
+
+    const resolvedAvatarUrl = rider.user.partnerAvatarUrl || null;
+    const mappedUser = rider.user ? {
+      id: rider.user.id,
+      phone: rider.user.phone,
+      name: rider.user.name,
+      status: rider.user.status,
+      avatarUrl: resolvedAvatarUrl,
+      avatarUpdatedAt: rider.user.partnerAvatarUpdatedAt
+    } : null;
+
+    return {
+      ...rider,
+      user: mappedUser,
+      isVerified
+    };
   }
 
   async updateProfile(userId: string, dto: UpdateRiderProfileDto) {
@@ -67,7 +98,20 @@ export class RidersService {
         }
       });
 
-      return saved;
+      const resolvedAvatarUrl = saved.user.partnerAvatarUrl || null;
+      const mappedUser = saved.user ? {
+        id: saved.user.id,
+        phone: saved.user.phone,
+        name: saved.user.name,
+        status: saved.user.status,
+        avatarUrl: resolvedAvatarUrl,
+        avatarUpdatedAt: saved.user.partnerAvatarUpdatedAt
+      } : null;
+
+      return {
+        ...saved,
+        user: mappedUser
+      };
     });
 
     return updated;
@@ -591,6 +635,10 @@ export class RidersService {
     if (!rider) {
       throw new NotFoundException("Rider profile not found for user");
     }
+    const status = rider.status;
+    if (status === "SUSPENDED" || status === "AGREEMENT_TERMINATED" || status === "OFFBOARDED" || status === "BLOCKED") {
+      throw new ForbiddenException(`Rider account status is ${status.toLowerCase()}. Access restricted.`);
+    }
     return rider;
   }
 
@@ -598,6 +646,43 @@ export class RidersService {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     return date;
+  }
+
+  async updateBankDetails(userId: string, dto: SubmitBankDetailsDto) {
+    const rider = await this.riderForUser(userId);
+    const key = process.env.BANK_DETAILS_ENCRYPTION_KEY;
+    if (!key) {
+      throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
+    }
+
+    const cryptoUtil = require("../../common/crypto.util");
+    const encryptedAccountNumber = cryptoUtil.encryptAtRest(dto.account_number, key);
+
+    const version = await this.prisma.bankDetailVersion.create({
+      data: {
+        riderId: rider.id,
+        accountHolderName: dto.account_holder,
+        accountNumber: encryptedAccountNumber,
+        bankName: dto.bank_name,
+        ifsc: dto.ifsc_code,
+        branch: dto.branch_name,
+        upiId: dto.upi_id,
+        proofDocumentUrl: dto.document_url,
+        status: "PENDING_REVIEW"
+      }
+    });
+
+    await this.eventBus.publish(
+      "compliance.bank_details_submitted",
+      {
+        versionId: version.id,
+        partnerId: rider.id,
+        partnerType: "rider"
+      },
+      { source: "riders.service" }
+    );
+
+    return version;
   }
 
   private auditRiderAction(

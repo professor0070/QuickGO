@@ -4,6 +4,7 @@ export type RequestUser = {
   id: string;
   phone: string;
   roles: string[];
+  appContext: string;
 };
 
 export const CurrentUser = createParamDecorator(

@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException, Inject, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma.service";
 import { assertOrderTransition, OrderStatus } from "../orders/order-state.machine";
+import { FILE_STORAGE, FileStorageService } from "../uploads/file-storage.service";
 import {
   RejectOrderDto,
   ToggleShopStatusDto,
@@ -9,12 +10,19 @@ import {
   UpdateVendorProfileDto,
   UploadComplianceDocumentDto,
   VendorCreateProductDto,
-  VendorUpdateProductDto
+  VendorUpdateProductDto,
+  SubmitBankDetailsDto
 } from "./vendor.dto";
+
+import { DomainEventBus } from "../internal-events/domain-event-bus.service";
 
 @Injectable()
 export class VendorsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventBus: DomainEventBus,
+    @Inject(FILE_STORAGE) private readonly fileStorage: FileStorageService,
+  ) {}
 
   async dashboard(userId: string) {
     const vendor = await this.vendorForUser(userId);
@@ -133,7 +141,7 @@ export class VendorsService {
       where: { productId, isActive: true },
       data: { isActive: false }
     });
-    
+
     const productPrice = await this.prisma.productPrice.create({
       data: {
         productId,
@@ -156,10 +164,44 @@ export class VendorsService {
 
   async getProfile(userId: string) {
     const vendor = await this.vendorForUser(userId);
-    return this.prisma.vendor.findUnique({
+    const profile = await this.prisma.vendor.findUnique({
       where: { id: vendor.id },
       include: { serviceZone: true, documents: true }
     });
+    if (!profile) return null;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        partnerAvatarUrl: true,
+        partnerAvatarUpdatedAt: true,
+      }
+    });
+
+    const required = ["FSSAI", "GST", "PAN"];
+    const approvedTypes = (profile.documents || [])
+      .filter((doc: any) => doc.status === "APPROVED" && (!doc.expiresAt || new Date(doc.expiresAt) > new Date()))
+      .map((doc: any) => doc.type);
+    const documentsOk = required.every(t => approvedTypes.includes(t));
+
+    const isVerified = (profile.status === "APPROVED" || profile.onboardingStatus === "APPROVED") &&
+      profile.serviceZone?.isActive === true &&
+      documentsOk;
+
+    return {
+      ...profile,
+      user: user ? {
+        id: user.id,
+        phone: user.phone,
+        name: user.name,
+        avatarUrl: user.partnerAvatarUrl || null,
+        avatarUpdatedAt: user.partnerAvatarUpdatedAt
+      } : null,
+      isVerified
+    };
   }
 
   async updateProfile(userId: string, dto: UpdateVendorProfileDto) {
@@ -252,7 +294,10 @@ export class VendorsService {
       dto.freshness_status ?? product.freshnessStatus
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    const oldStorageKey = product.imageStorageKey;
+    const shouldClearImage = dto.image_url === "";
+
+    const updatedProduct = await this.prisma.$transaction(async (tx) => {
       if (dto.price !== undefined || dto.mrp !== undefined) {
         await tx.productPrice.updateMany({
           where: { productId, isActive: true },
@@ -274,7 +319,11 @@ export class VendorsService {
           name: dto.name ?? product.name,
           unit: dto.unit ?? product.unit,
           description: dto.description ?? product.description,
-          imageUrl: dto.image_url ?? product.imageUrl,
+          imageUrl: shouldClearImage ? null : (dto.image_url ?? product.imageUrl),
+          imageStorageKey: shouldClearImage ? null : product.imageStorageKey,
+          imageMimeType: shouldClearImage ? null : product.imageMimeType,
+          imageSizeBytes: shouldClearImage ? null : product.imageSizeBytes,
+          imageUpdatedAt: shouldClearImage ? null : product.imageUpdatedAt,
           mrp,
           margin: mrp - price,
           shelfLifeDays: dto.shelf_life_days !== undefined ? dto.shelf_life_days : product.shelfLifeDays,
@@ -282,6 +331,16 @@ export class VendorsService {
         }
       });
     });
+
+    if (shouldClearImage && oldStorageKey) {
+      try {
+        await this.fileStorage.delete(oldStorageKey, "image");
+      } catch (e) {
+        console.error(`Failed to delete cleared product image file ${oldStorageKey}:`, e);
+      }
+    }
+
+    return updatedProduct;
   }
 
   async deleteProduct(userId: string, productId: string) {
@@ -357,6 +416,10 @@ export class VendorsService {
     if (!staff) {
       throw new NotFoundException("Vendor profile not found for user");
     }
+    const status = staff.vendor.status;
+    if (status === "SUSPENDED" || status === "AGREEMENT_TERMINATED" || status === "OFFBOARDED" || status === "BLOCKED") {
+      throw new ForbiddenException(`Vendor account status is ${status.toLowerCase()}. Access restricted.`);
+    }
     return staff.vendor;
   }
 
@@ -368,6 +431,43 @@ export class VendorsService {
       throw new NotFoundException("Vendor order not found");
     }
     return order;
+  }
+
+  async updateBankDetails(userId: string, dto: SubmitBankDetailsDto) {
+    const vendor = await this.vendorForUser(userId);
+    const key = process.env.BANK_DETAILS_ENCRYPTION_KEY;
+    if (!key) {
+      throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
+    }
+
+    const cryptoUtil = require("../../common/crypto.util");
+    const encryptedAccountNumber = cryptoUtil.encryptAtRest(dto.account_number, key);
+
+    const version = await this.prisma.bankDetailVersion.create({
+      data: {
+        vendorId: vendor.id,
+        accountHolderName: dto.account_holder,
+        accountNumber: encryptedAccountNumber,
+        bankName: dto.bank_name,
+        ifsc: dto.ifsc_code,
+        branch: dto.branch_name,
+        upiId: dto.upi_id,
+        proofDocumentUrl: dto.document_url,
+        status: "PENDING_REVIEW"
+      }
+    });
+
+    await this.eventBus.publish(
+      "compliance.bank_details_submitted",
+      {
+        versionId: version.id,
+        partnerId: vendor.id,
+        partnerType: "vendor"
+      },
+      { source: "vendors.service" }
+    );
+
+    return version;
   }
 
   private async productForVendor(vendorId: string, productId: string) {

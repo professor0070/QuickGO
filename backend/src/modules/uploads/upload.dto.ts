@@ -15,6 +15,10 @@ export class VendorComplianceUploadDto {
   @IsOptional()
   @IsDateString()
   expires_at?: string;
+
+  @IsOptional()
+  @IsString()
+  document_number?: string;
 }
 
 export class RiderKycUploadDto {
@@ -23,4 +27,8 @@ export class RiderKycUploadDto {
 
   @IsString()
   reason!: string;
+
+  @IsOptional()
+  @IsString()
+  document_number?: string;
 }

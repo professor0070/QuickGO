@@ -6,7 +6,11 @@ coverage/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
-android/
+**/android/build/
+**/android/.gradle/
+**/android/local.properties
+**/android/*.keystore
+**/android/key.properties
 !mobile/partner_app/android/
 !mobile/partner_app/android/gradle.properties
 ios/

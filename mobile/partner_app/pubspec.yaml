@@ -23,6 +23,7 @@ dependencies:
   quickgo_shared_ui:
     path: ../packages/shared_ui
   image_picker: ^1.1.2
+  shared_preferences: ^2.2.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -33,6 +34,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/quickgo_logo.jpg
+    - assets/go_buddy/character/go_buddy_scooter_rider_3d_master.png
 
 flutter_launcher_icons:
   android: true

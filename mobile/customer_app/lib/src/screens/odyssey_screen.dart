@@ -23,14 +23,14 @@ class _OdysseyScreenState extends ConsumerState<OdysseyScreen> with TickerProvid
 
   // Journey Map Node positions (normalized 0.0 to 1.0)
   final List<Map<String, dynamic>> _nodes = [
-    {'label': 'START', 'orders': 0, 'x': 0.15, 'y': 0.85},
-    {'label': '1', 'orders': 1, 'x': 0.25, 'y': 0.75},
-    {'label': '2', 'orders': 2, 'x': 0.35, 'y': 0.70},
-    {'label': '3', 'orders': 3, 'x': 0.45, 'y': 0.65},
-    {'label': '5', 'orders': 5, 'x': 0.55, 'y': 0.55, 'reward': true},
-    {'label': '10', 'orders': 10, 'x': 0.65, 'y': 0.40, 'reward': true},
-    {'label': '15', 'orders': 15, 'x': 0.50, 'y': 0.25, 'reward': true},
-    {'label': '20', 'orders': 20, 'x': 0.65, 'y': 0.12, 'reward': true},
+    {'label': 'START', 'orders': 0, 'x': 0.10, 'y': 0.70},
+    {'label': '1', 'orders': 1, 'x': 0.22, 'y': 0.68},
+    {'label': '2', 'orders': 2, 'x': 0.34, 'y': 0.61},
+    {'label': '3', 'orders': 3, 'x': 0.49, 'y': 0.54},
+    {'label': '5', 'orders': 5, 'x': 0.61, 'y': 0.47, 'reward': true},
+    {'label': '10', 'orders': 10, 'x': 0.71, 'y': 0.36, 'reward': true},
+    {'label': '15', 'orders': 15, 'x': 0.67, 'y': 0.24, 'reward': true},
+    {'label': '20', 'orders': 20, 'x': 0.66, 'y': 0.15, 'reward': true},
   ];
 
   @override
@@ -279,69 +279,87 @@ class _OdysseyScreenState extends ConsumerState<OdysseyScreen> with TickerProvid
                           ],
                         ),
                         const SizedBox(height: 16),
-                        // Visual Canvas path
+                        // Visual Canvas path with dynamic scaling and background image
                         AspectRatio(
-                          aspectRatio: 1.3,
-                          child: Stack(
-                            children: [
-                              // Path painter
-                              Positioned.fill(
-                                child: CustomPaint(
-                                  painter: JourneyPathPainter(nodes: _nodes, totalOrders: totalOrders),
-                                ),
-                              ),
-                              // Node indicators
-                              ..._nodes.map((node) {
-                                final isCompleted = totalOrders >= (node['orders'] as int);
-                                final isRewardNode = node['reward'] as bool? ?? false;
-                                return Positioned(
-                                  left: (node['x'] as double) * 300,
-                                  top: (node['y'] as double) * 230,
-                                  child: Tooltip(
-                                    message: '${node['label']} Orders',
-                                    child: Container(
-                                      alignment: Alignment.center,
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        color: isCompleted
-                                            ? (isRewardNode ? Colors.orange : quickGoAccent)
-                                            : Colors.grey.shade300,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 2),
-                                        boxShadow: const [
-                                          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-                                        ],
+                          aspectRatio: 0.8,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final w = constraints.maxWidth;
+                                final h = constraints.maxHeight;
+
+                                return Stack(
+                                  children: [
+                                    // Beautiful background image representing the journey map
+                                    Positioned.fill(
+                                      child: Image.asset(
+                                        'assets/branding/journey_map.jpg',
+                                        fit: BoxFit.cover,
                                       ),
-                                      child: Text(
-                                        node['label'] == 'START' ? 'S' : node['label'],
-                                        style: TextStyle(
-                                          color: isCompleted ? Colors.white : quickGoTextLight,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                    ),
+                                    // Path painter (draws completion line over the background)
+                                    Positioned.fill(
+                                      child: CustomPaint(
+                                        painter: JourneyPathPainter(nodes: _nodes, totalOrders: totalOrders),
+                                      ),
+                                    ),
+                                    // Node indicators
+                                    ..._nodes.map((node) {
+                                      final isCompleted = totalOrders >= (node['orders'] as int);
+                                      final isRewardNode = node['reward'] as bool? ?? false;
+                                      return Positioned(
+                                        left: (node['x'] as double) * w - 12,
+                                        top: (node['y'] as double) * h - 12,
+                                        child: Tooltip(
+                                          message: '${node['label']} Orders',
+                                          child: Container(
+                                            alignment: Alignment.center,
+                                            width: 24,
+                                            height: 24,
+                                            decoration: BoxDecoration(
+                                              color: isCompleted
+                                                  ? (isRewardNode ? Colors.orange : quickGoAccent)
+                                                  : Colors.grey.shade300,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 2),
+                                              boxShadow: const [
+                                                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                                              ],
+                                            ),
+                                            child: Text(
+                                              node['label'] == 'START' ? 'S' : node['label'],
+                                              style: TextStyle(
+                                                color: isCompleted ? Colors.white : quickGoTextLight,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                      );
+                                    }),
+                                    // Mascot animated widget (Go Buddy)
+                                    AnimatedBuilder(
+                                      animation: _rideAnimation,
+                                      builder: (context, child) {
+                                        final pos = _getPositionForOrders(totalOrders, _rideAnimation.value);
+                                        return Positioned(
+                                          left: pos.x * w - 25,
+                                          top: pos.y * h - 25,
+                                          child: const GoBuddyWidget(
+                                            pose: GoBuddyPose.onTheWay,
+                                            width: 50,
+                                            height: 50,
+                                            animate: true,
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  ),
+                                  ],
                                 );
-                              }),
-                              // Mascot animated widget
-                              AnimatedBuilder(
-                                animation: _rideAnimation,
-                                builder: (context, child) {
-                                  final pos = _getPositionForOrders(totalOrders, _rideAnimation.value);
-                                  return Positioned(
-                                    left: pos.x * 300 - 24,
-                                    top: pos.y * 230 - 32,
-                                    child: const GoBuddyWidget(
-                                      pose: GoBuddyPose.onTheWay,
-                                      width: 50,
-                                      height: 50,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
+                              },
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -611,15 +629,15 @@ class JourneyPathPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final pathPaint = Paint()
-      ..color = Colors.grey.shade300
+      ..color = Colors.white.withOpacity(0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4
       ..strokeCap = StrokeCap.round;
 
     final progressPaint = Paint()
-      ..color = quickGoAccent
+      ..color = Colors.orangeAccent
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
+      ..strokeWidth = 6
       ..strokeCap = StrokeCap.round;
 
     final path = Path();

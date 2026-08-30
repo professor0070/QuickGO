@@ -34,6 +34,7 @@ flutter:
   assets:
     - assets/branding/quickgo_logo.png
     - assets/branding/quickgo_logo_foreground.png
+    - assets/branding/journey_map.jpg
     - assets/go_buddy/character/
     - assets/go_buddy/expressions/
     - assets/go_buddy/poses/

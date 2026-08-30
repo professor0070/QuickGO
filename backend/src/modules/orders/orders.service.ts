@@ -127,7 +127,56 @@ export class OrdersService {
     );
     const deliveryFee = 0;
     const platformFee = 0;
-    const discountAmount = 0;
+
+    let discountAmount = 0;
+    let coinsSpent = 0;
+    let cashbackSpent = 0;
+
+    const useCoins = dto.use_go_coins ? Number(dto.use_go_coins) : 0;
+    const useCashback = dto.use_cashback ? Number(dto.use_cashback) : 0;
+
+    if (useCoins > 0 && useCashback > 0) {
+      throw new BadRequestException("GO Coins and Cashback cannot be used together on the same order.");
+    }
+
+    if (useCoins > 0) {
+      if (itemTotal < 10) {
+        throw new BadRequestException("GO Coins can only be used on orders of ₹10 or greater.");
+      }
+      if (useCoins > 100) {
+        throw new BadRequestException("Maximum 100 GO Coins can be used per order.");
+      }
+      if (useCoins % 10 !== 0) {
+        throw new BadRequestException("GO Coins must be used in multiples of 10.");
+      }
+
+      // Check user wallet balance
+      const wallet = await this.prisma.wallet.findUnique({
+        where: { customerId: customer.id }
+      });
+      if (!wallet || wallet.coinsBalance < useCoins) {
+        throw new BadRequestException("Insufficient GO Coins balance.");
+      }
+
+      coinsSpent = useCoins;
+      discountAmount = useCoins / 10; // 10 coins = ₹1
+    } else if (useCashback > 0) {
+      // Check user wallet balance
+      const wallet = await this.prisma.wallet.findUnique({
+        where: { customerId: customer.id }
+      });
+      if (!wallet || Number(wallet.cashbackBalance) < useCashback) {
+        throw new BadRequestException("Insufficient Cashback balance.");
+      }
+
+      cashbackSpent = useCashback;
+      discountAmount = useCashback;
+    }
+
+    if (discountAmount > itemTotal) {
+      discountAmount = itemTotal;
+    }
+
     const totalAmount = itemTotal + deliveryFee + platformFee - discountAmount;
     const commissionRateSnapshot = Number(vendor.commissionRate);
     const commissionAmount = Number(((itemTotal * commissionRateSnapshot) / 100).toFixed(2));
@@ -145,6 +194,47 @@ export class OrdersService {
     const collectionModel = isDigital ? "DIGITAL" : "COD_OR_UPI_ON_DELIVERY";
 
     return this.prisma.$transaction(async (tx) => {
+      // Deduct from wallet if coins or cashback used
+      if (coinsSpent > 0) {
+        const wallet = await tx.wallet.update({
+          where: { customerId: customer.id },
+          data: {
+            coinsBalance: {
+              decrement: coinsSpent
+            }
+          }
+        });
+
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "GO_COINS_DEBIT",
+            amount: coinsSpent,
+            currency: "COINS",
+            description: `Spent ${coinsSpent} GO Coins on order ${orderNumber}`
+          }
+        });
+      } else if (cashbackSpent > 0) {
+        const wallet = await tx.wallet.update({
+          where: { customerId: customer.id },
+          data: {
+            cashbackBalance: {
+              decrement: cashbackSpent
+            }
+          }
+        });
+
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "CASHBACK_DEBIT",
+            amount: cashbackSpent,
+            currency: "CASHBACK",
+            description: `Spent ₹${cashbackSpent.toFixed(2)} Cashback on order ${orderNumber}`
+          }
+        });
+      }
+
       const order = await tx.order.create({
         data: {
           orderNumber,
@@ -244,6 +334,7 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
+      take: 50,
       include: {
         vendor: { select: { id: true, shopName: true } },
         items: true

@@ -103,9 +103,27 @@ export function validateEnvironment(config: Record<string, unknown>): ValidatedE
       config.PAYMENT_RECONCILIATION_ENABLED,
       true
     ),
-    RAZORPAY_KEY_ID: readString(config.RAZORPAY_KEY_ID, "rzp_test_placeholder_key_id"),
-    RAZORPAY_KEY_SECRET: readString(config.RAZORPAY_KEY_SECRET, "rzp_test_placeholder_key_secret"),
-    RAZORPAY_WEBHOOK_SECRET: readString(config.RAZORPAY_WEBHOOK_SECRET, "rzp_test_placeholder_webhook_secret")
+    RAZORPAY_KEY_ID: readRazorpayCredential(
+      "RAZORPAY_KEY_ID",
+      config.RAZORPAY_KEY_ID,
+      "rzp_test_placeholder_key_id",
+      deployed,
+      errors
+    ),
+    RAZORPAY_KEY_SECRET: readRazorpayCredential(
+      "RAZORPAY_KEY_SECRET",
+      config.RAZORPAY_KEY_SECRET,
+      "rzp_test_placeholder_key_secret",
+      deployed,
+      errors
+    ),
+    RAZORPAY_WEBHOOK_SECRET: readRazorpayCredential(
+      "RAZORPAY_WEBHOOK_SECRET",
+      config.RAZORPAY_WEBHOOK_SECRET,
+      "rzp_test_placeholder_webhook_secret",
+      deployed,
+      errors
+    )
   };
 
   if (errors.length > 0) {
@@ -234,4 +252,18 @@ function readString(value: unknown, fallback: string): string {
   }
   const text = value.trim();
   return text.length > 0 ? text : fallback;
+}
+
+function readRazorpayCredential(
+  key: string,
+  value: unknown,
+  placeholder: string,
+  deployed: boolean,
+  errors: string[]
+): string {
+  const credential = readString(value, placeholder);
+  if (deployed && credential === placeholder) {
+    errors.push(`${key} must not be a placeholder value in deployed environments`);
+  }
+  return credential;
 }

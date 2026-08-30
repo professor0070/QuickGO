@@ -13,7 +13,8 @@ import {
   UpdateVendorProfileDto,
   UploadComplianceDocumentDto,
   VendorCreateProductDto,
-  VendorUpdateProductDto
+  VendorUpdateProductDto,
+  SubmitBankDetailsDto
 } from "./vendor.dto";
 import { VendorsService } from "./vendors.service";
 
@@ -166,5 +167,16 @@ export class VendorsController {
   @Delete("products/:productId")
   deleteProduct(@CurrentUser() user: RequestUser, @Param("productId") productId: string) {
     return this.vendorsService.deleteProduct(user.id, productId);
+  }
+
+  @Post("bank-details")
+  async updateBankDetails(
+    @CurrentUser() user: RequestUser,
+    @Body() body: SubmitBankDetailsDto
+  ) {
+    return {
+      data: await this.vendorsService.updateBankDetails(user.id, body),
+      message: "Bank details submitted successfully"
+    };
   }
 }

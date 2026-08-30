@@ -1,0 +1,54 @@
+{
+  "gate": "Gate 4B",
+  "name": "Authenticated Rider Read-Only Performance Confidence Baseline",
+  "timestamp": "2026-07-15T02:45:00Z",
+  "status": "PASS",
+  "config": {
+    "warmup": {
+      "vus": 2,
+      "duration": "30s"
+    },
+    "measured": {
+      "vus": 5,
+      "duration": "4m",
+      "pacing_seconds": 12
+    }
+  },
+  "results": {
+    "total_requests": 213,
+    "warmup_requests": 12,
+    "measured_requests": 200,
+    "setup_requests": 1,
+    "success_rate": 1.0,
+    "failure_rate": 0.0,
+    "endpoints": {
+      "rider_dashboard": {
+        "samples": 100,
+        "failed": 0,
+        "latency_ms": {
+          "min": 2.53,
+          "avg": 6.76,
+          "med": 4.20,
+          "p90": 11.69,
+          "p95": 15.25,
+          "p99": 83.24,
+          "max": 83.24
+        }
+      },
+      "rider_profile": {
+        "samples": 100,
+        "failed": 0,
+        "latency_ms": {
+          "min": 2.37,
+          "avg": 4.87,
+          "med": 4.00,
+          "p90": 5.74,
+          "p95": 14.22,
+          "p99": 23.16,
+          "max": 23.16
+        }
+      }
+    }
+  },
+  "verdict": "PASS"
+}

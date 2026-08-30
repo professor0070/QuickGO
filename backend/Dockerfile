@@ -32,5 +32,8 @@ COPY --from=builder /usr/src/app/backend/package*.json ./backend/
 COPY --from=builder /usr/src/app/backend/dist ./backend/dist
 COPY --from=builder /usr/src/app/backend/prisma ./backend/prisma
 
+# SECURITY: Run as non-root user
+USER node
+
 EXPOSE 3000
 CMD ["node", "backend/dist/src/main"]

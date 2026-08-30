@@ -263,4 +263,81 @@ export class NotificationsService {
 
     return { success: true, message: "Device registered successfully" };
   }
+
+  async sendMockNotification(title: string, body: string) {
+    const sessions = await this.prisma.deviceSession.findMany({
+      where: { fcmToken: { not: null } },
+      select: { fcmToken: true }
+    });
+
+    const tokens = sessions.map(s => s.fcmToken).filter((t): t is string => !!t);
+    const uniqueTokens = [...new Set(tokens)];
+
+    if (uniqueTokens.length === 0) {
+      return { success: false, message: "No devices registered with FCM tokens in database." };
+    }
+
+    this.logger.log(`Sending mock FCM notification to ${uniqueTokens.length} devices...`);
+    const dispatch = await this.fcm.sendToDevices(
+      uniqueTokens,
+      title,
+      body,
+      { type: "mock_test", sentAt: new Date().toISOString() }
+    );
+
+    return {
+      success: true,
+      message: `Mock notification dispatch complete.`,
+      dispatch
+    };
+  }
+
+  async sendVendorOrderNotification(orderNumber: string, vendorId?: string) {
+    let vendorStaff;
+    if (vendorId) {
+      vendorStaff = await this.prisma.vendorStaff.findMany({
+        where: { vendorId, status: "ACTIVE" },
+        select: { userId: true }
+      });
+    } else {
+      vendorStaff = await this.prisma.vendorStaff.findMany({
+        where: { status: "ACTIVE" },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { userId: true }
+      });
+    }
+
+    const userIds = vendorStaff.map(s => s.userId).filter(Boolean);
+    if (userIds.length === 0) {
+      const sessions = await this.prisma.deviceSession.findMany({
+        select: { userId: true }
+      });
+      userIds.push(...sessions.map(s => s.userId));
+    }
+
+    const uniqueUserIds = [...new Set(userIds)];
+    if (uniqueUserIds.length === 0) {
+      return { success: false, message: "No active users found to send the notification to." };
+    }
+
+    const result = await this.createForUsers({
+      userIds: uniqueUserIds,
+      title: "New order received",
+      body: `Order #${orderNumber} needs vendor acceptance.`,
+      data: {
+        eventName: "order.placed",
+        payload: {
+          orderNumber,
+          orderId: "mock-order-id-" + Date.now()
+        }
+      }
+    });
+
+    return {
+      success: true,
+      message: `Sent 'New order received' notification to ${uniqueUserIds.length} users.`,
+      result
+    };
+  }
 }

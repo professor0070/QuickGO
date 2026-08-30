@@ -654,10 +654,10 @@ export class RidersService {
     if (!key) {
       throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
     }
-
+    
     const cryptoUtil = require("../../common/crypto.util");
     const encryptedAccountNumber = cryptoUtil.encryptAtRest(dto.account_number, key);
-
+    
     const version = await this.prisma.bankDetailVersion.create({
       data: {
         riderId: rider.id,

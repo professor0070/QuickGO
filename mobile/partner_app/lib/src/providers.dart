@@ -4,6 +4,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:quickgo_shared_api/quickgo_api_client.dart';
 import 'package:quickgo_shared_auth/quickgo_auth.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 final apiClientProvider = Provider<QuickGoApiClient>((ref) {
   return QuickGoApiClient();
 });
@@ -34,9 +36,6 @@ class SessionState {
   final PartnerMode? selectedPartnerMode;
 
   bool get isAuthenticated => token != null;
-  bool get isVendor => roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
-  bool get isRider => roles.contains('RIDER');
-
   bool get hasVendorRole => roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
   bool get hasRiderRole => roles.contains('RIDER');
   bool get hasPartnerAccess => hasVendorRole || hasRiderRole;
@@ -48,17 +47,68 @@ class SessionState {
   }
 }
 
+const int partnerSessionValidityDays = 50;
+const int partnerSessionValidityMs = partnerSessionValidityDays * 24 * 60 * 60 * 1000;
+
 class SessionNotifier extends StateNotifier<SessionState> {
-  SessionNotifier(this._client) : super(SessionState());
+  SessionNotifier(this._client) : super(SessionState()) {
+    restoreSession();
+  }
   final QuickGoApiClient _client;
 
-  void authenticate(String token, String phone, String userId, List<String> roles) {
+  Future<void> restoreSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('quickgo_session_token');
+      final phone = prefs.getString('quickgo_session_phone');
+      final userId = prefs.getString('quickgo_session_user_id');
+      final roles = prefs.getStringList('quickgo_session_roles') ?? const [];
+      final modeStr = prefs.getString('quickgo_session_mode');
+      final createdAt = prefs.getInt('quickgo_session_created_at') ?? 0;
+
+      if (token != null && token.isNotEmpty && createdAt > 0) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final elapsed = now - createdAt;
+        if (elapsed < partnerSessionValidityMs) {
+          _client.setBearerToken(token);
+
+          PartnerMode? mode;
+          if (modeStr == 'vendor') {
+            mode = PartnerMode.vendor;
+          } else if (modeStr == 'rider') {
+            mode = PartnerMode.rider;
+          } else {
+            final hasVendor = roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
+            final hasRider = roles.contains('RIDER');
+            if (hasVendor && !hasRider) {
+              mode = PartnerMode.vendor;
+            } else if (hasRider && !hasVendor) {
+              mode = PartnerMode.rider;
+            }
+          }
+
+          state = SessionState(
+            token: token,
+            phone: phone,
+            userId: userId,
+            roles: roles,
+            selectedPartnerMode: mode,
+          );
+          return;
+        }
+      }
+      // Session missing or expired (>= 50 days)
+      await logout();
+    } catch (_) {}
+  }
+
+  Future<void> authenticate(String token, String phone, String userId, List<String> roles) async {
     // Evict previous account's cached avatar images on identity change (Section G.7)
     if (state.userId != null && state.userId != userId) {
       PaintingBinding.instance.imageCache.clear();
     }
     _client.setBearerToken(token);
-
+    
     // Automatically set selected mode if the user only has a single role
     PartnerMode? autoMode;
     final hasVendor = roles.contains('VENDOR_OWNER') || roles.contains('VENDOR_STAFF');
@@ -76,9 +126,21 @@ class SessionNotifier extends StateNotifier<SessionState> {
       roles: roles,
       selectedPartnerMode: autoMode,
     );
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('quickgo_session_token', token);
+      await prefs.setString('quickgo_session_phone', phone);
+      await prefs.setString('quickgo_session_user_id', userId);
+      await prefs.setStringList('quickgo_session_roles', roles);
+      if (autoMode != null) {
+        await prefs.setString('quickgo_session_mode', autoMode.name);
+      }
+      await prefs.setInt('quickgo_session_created_at', DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
   }
 
-  void selectMode(PartnerMode mode) {
+  Future<void> selectMode(PartnerMode mode) async {
     if (mode == PartnerMode.vendor && !state.hasVendorRole) return;
     if (mode == PartnerMode.rider && !state.hasRiderRole) return;
     state = SessionState(
@@ -88,13 +150,38 @@ class SessionNotifier extends StateNotifier<SessionState> {
       roles: state.roles,
       selectedPartnerMode: mode,
     );
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('quickgo_session_mode', mode.name);
+    } catch (_) {}
   }
 
-  void logout() {
+  Future<void> logout() async {
     _client.setBearerToken('');
     // Evict cached avatar images to prevent previous-account data leaking (Section G.7)
     PaintingBinding.instance.imageCache.clear();
     state = SessionState();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in [
+        'quickgo_session_token',
+        'quickgo_session_phone',
+        'quickgo_session_user_id',
+        'quickgo_session_roles',
+        'quickgo_session_mode',
+        'quickgo_session_created_at',
+        'quickgo_auth_token',
+        'access_token',
+        'token',
+        'auth_token',
+      ]) {
+        try {
+          await prefs.remove(k);
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 }
 

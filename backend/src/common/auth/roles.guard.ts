@@ -28,14 +28,14 @@ export class RolesGuard implements CanActivate {
     // Enforce strict appContext routing boundaries to prevent dual-role token reuse
     if (appContext === "CUSTOMER") {
       const hasPartnerOrAdminRequired = required.some((role) =>
-        ["RIDER", "VENDOR_OWNER", "VENDOR_STAFF", "ADMIN", "SUPER_ADMIN", "ZONE_ADMIN"].includes(role)
+        ["RIDER", "VENDOR_OWNER", "VENDOR_STAFF", "SUPER_ADMIN", "ZONE_ADMIN"].includes(role)
       );
       if (hasPartnerOrAdminRequired) {
         return false;
       }
     } else if (appContext === "PARTNER") {
       const hasCustomerOrAdminRequired = required.some((role) =>
-        ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "ZONE_ADMIN"].includes(role)
+        ["CUSTOMER", "SUPER_ADMIN", "ZONE_ADMIN"].includes(role)
       );
       if (hasCustomerOrAdminRequired) {
         return false;

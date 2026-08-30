@@ -15,6 +15,7 @@ export class CatalogService {
         ...(filters.serviceZoneId ? { serviceZoneId: filters.serviceZoneId } : {})
       },
       orderBy: { shopName: "asc" },
+      take: 50,
       select: {
         id: true,
         shopName: true,
@@ -47,7 +48,16 @@ export class CatalogService {
     });
   }
 
-  listProducts(filters: { vendorId?: string; categoryId?: string }) {
+  listProducts(filters: {
+    vendorId?: string;
+    categoryId?: string;
+    search?: string;
+    limit?: number;
+    cursor?: string;
+  }) {
+    const limit = filters.limit ? Math.min(filters.limit, 100) : 20;
+    const skip = filters.cursor ? 1 : 0;
+
     return this.prisma.product.findMany({
       where: {
         isApproved: true,
@@ -55,8 +65,18 @@ export class CatalogService {
         category: { isActive: true },
         vendor: { isOpen: true, status: "APPROVED" },
         ...(filters.vendorId ? { vendorId: filters.vendorId } : {}),
-        ...(filters.categoryId ? { categoryId: filters.categoryId } : {})
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...(filters.search
+          ? {
+              name: {
+                contains: filters.search,
+                mode: "insensitive"
+              }
+            }
+          : {})
       },
+      take: limit,
+      ...(filters.cursor ? { cursor: { id: filters.cursor }, skip } : {}),
       include: {
         vendor: { select: { id: true, shopName: true, isOpen: true } },
         category: true,
@@ -66,7 +86,7 @@ export class CatalogService {
           take: 1
         }
       },
-      orderBy: { name: "asc" }
+      orderBy: { id: "asc" }
     });
   }
 }

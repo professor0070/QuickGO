@@ -98,17 +98,17 @@ class _LegalDocView extends StatelessWidget {
             'Last Updated: June 25, 2026',
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey,
+              color: quickGoTextLight,
               fontStyle: FontStyle.italic,
             ),
           ),
-          const Divider(height: 24, thickness: 1.2),
+          const Divider(height: 24, thickness: 1.2, color: quickGoLine),
           Text(
             content,
             style: const TextStyle(
               fontSize: 14,
               height: 1.6,
-              color: Colors.black87,
+              color: quickGoTextDark,
             ),
           ),
           const SizedBox(height: 40),

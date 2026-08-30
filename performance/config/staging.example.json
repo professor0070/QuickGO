@@ -1,0 +1,39 @@
+{
+  "api_base_url": "http://[STAGING_HOST]:3000/api/v1",
+  "load_test_env": "staging",
+  "allow_load_test": true,
+  "otp_provider": "mock",
+  "mock_otp_code": "123456",
+  "service_zone_id": "00000000-0000-4000-8000-000000000001",
+  "staging_host_allowlist": [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0"
+  ],
+  "database_host_allowlist": [
+    "localhost",
+    "database"
+  ],
+  "scenarios": {
+    "vus_5": {
+      "vus": 5,
+      "duration": "2m"
+    },
+    "vus_10": {
+      "vus": 10,
+      "duration": "5m"
+    },
+    "vus_20": {
+      "vus": 20,
+      "duration": "10m"
+    },
+    "vus_50": {
+      "vus": 50,
+      "duration": "10m"
+    },
+    "vus_100": {
+      "vus": 100,
+      "duration": "10m"
+    }
+  }
+}

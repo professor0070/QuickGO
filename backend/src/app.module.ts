@@ -31,6 +31,8 @@ import { SupportModule } from "./modules/support/support.module";
 import { UploadsModule } from "./modules/uploads/uploads.module";
 import { UsersModule } from "./modules/users/users.module";
 import { VendorsModule } from "./modules/vendors/vendors.module";
+import { WalletModule } from "./modules/wallet/wallet.module";
+import { OdysseyModule } from "./modules/odyssey/odyssey.module";
 
 @Module({
   imports: [
@@ -69,7 +71,9 @@ import { VendorsModule } from "./modules/vendors/vendors.module";
     AdminModule,
     ReportsModule,
     AppVersionsModule,
-    FeatureFlagsModule
+    FeatureFlagsModule,
+    WalletModule,
+    OdysseyModule
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

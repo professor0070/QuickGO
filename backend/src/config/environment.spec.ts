@@ -50,6 +50,9 @@ describe("validateEnvironment", () => {
       CLOUDINARY_API_SECRET: "cloudinary-secret",
       FCM_SERVER_KEY_OR_SERVICE_ACCOUNT: "firebase-service-account",
       ADMIN_APP_URL: "https://admin.quickgo.example",
+      RAZORPAY_KEY_ID: "rzp_live_12345678901234",
+      RAZORPAY_KEY_SECRET: "secret123456789012345678901234",
+      RAZORPAY_WEBHOOK_SECRET: "webhook1234567890123456789012",
       MAINTENANCE_MODE: "true"
     });
 

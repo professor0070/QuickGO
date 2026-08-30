@@ -2,6 +2,22 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Public } from "../../common/auth/public.decorator";
 
+@Controller()
+export class RootApiController {
+  constructor(private readonly config: ConfigService) {}
+
+  @Public()
+  @Get()
+  getRoot() {
+    return {
+      service: "QuickGO API",
+      status: "online",
+      version: this.config.get<string>("APP_VERSION") || "1.0.0",
+      health: "/api/v1/system/health"
+    };
+  }
+}
+
 @Controller("system")
 export class AppVersionsController {
   constructor(private readonly config: ConfigService) {}

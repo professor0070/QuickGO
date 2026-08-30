@@ -7,7 +7,7 @@ export async function runDataMigration(prismaClient?: PrismaClient) {
     // 1. Migrate Customer-only legacy avatars (has Customer profile, no Partner profiles)
     const customerResult = await prisma.$executeRawUnsafe(`
       UPDATE "User" u
-      SET
+      SET 
         "customerAvatarUrl" = u."avatarUrl",
         "customerAvatarStorageKey" = u."avatarStorageKey",
         "customerAvatarMimeType" = u."avatarMimeType",
@@ -28,7 +28,7 @@ export async function runDataMigration(prismaClient?: PrismaClient) {
     // 2. Migrate Partner-only legacy avatars (has Rider/VendorStaff profile, no Customer profile)
     const partnerResult = await prisma.$executeRawUnsafe(`
       UPDATE "User" u
-      SET
+      SET 
         "partnerAvatarUrl" = u."avatarUrl",
         "partnerAvatarStorageKey" = u."avatarStorageKey",
         "partnerAvatarMimeType" = u."avatarMimeType",

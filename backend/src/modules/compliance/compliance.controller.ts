@@ -44,13 +44,13 @@ export class ComplianceController {
     return { data: privacyRequest, message: "Privacy request created" };
   }
 
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "ZONE_ADMIN")
   @Get("admin/privacy-requests")
   adminListPrivacyRequests() {
     return this.compliance.listPrivacyRequests();
   }
 
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "ZONE_ADMIN")
   @Patch("admin/privacy-requests/:requestId")
   async adminUpdatePrivacyRequest(
     @Req() request: Request,

@@ -6,11 +6,7 @@ coverage/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
-**/android/build/
-**/android/.gradle/
-**/android/local.properties
-**/android/*.keystore
-**/android/key.properties
+android/
 !mobile/partner_app/android/
 !mobile/partner_app/android/gradle.properties
 ios/
@@ -25,3 +21,18 @@ windows/
 *.bak
 .DS_Store
 Thumbs.db
+
+# Security & Key Protection
+*.pem
+*.key
+*.keystore
+*.jks
+
+# Build & Release Artifacts
+*.apk
+*.aab
+
+# Local Audit & Test Dumps
+brain/
+window_dump*.xml
+screencap.png

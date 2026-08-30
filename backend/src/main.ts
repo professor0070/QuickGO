@@ -5,6 +5,9 @@ import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import fastifyHelmet from "@fastify/helmet";
 import fastifyMultipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import { existsSync } from "fs";
+import { join } from "path";
 import { AppModule } from "./app.module";
 import { Readable } from "stream";
 import { AllExceptionsFilter } from "./common/http/all-exceptions.filter";
@@ -51,6 +54,19 @@ async function bootstrap() {
   });
   await app.register(fastifyHelmet);
   await app.register(fastifyMultipart);
+
+  const uploadsDir = [
+    join(process.cwd(), "public", "uploads"),
+    join(process.cwd(), "backend", "public", "uploads"),
+    join(__dirname, "..", "public", "uploads"),
+    join(__dirname, "..", "..", "public", "uploads"),
+  ].find((dir) => existsSync(dir)) ?? join(process.cwd(), "public", "uploads");
+
+  await app.register(fastifyStatic, {
+    root: uploadsDir,
+    prefix: "/uploads/",
+    decorateReply: false,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalInterceptors(new ApiResponseInterceptor());
@@ -58,7 +74,7 @@ async function bootstrap() {
 
   const port = config.getOrThrow<number>("PORT");
   // Bind to all interfaces for local device testing.
-  await app.listen(port, "0.0.0.0");
+  await app.listen(port, "::");
 }
 
 void bootstrap();

@@ -85,7 +85,7 @@ function getGitTrackedStatus(relPath) {
 
 function computeFingerprint() {
   const sortedPaths = Array.from(new Set(TASK_MANIFEST_PATHS)).sort();
-
+  
   if (sortedPaths.length === 0) {
     console.error("ERROR: Task manifest is empty!");
     process.exit(1);
@@ -97,7 +97,7 @@ function computeFingerprint() {
 
   for (const relPath of sortedPaths) {
     const absPath = path.join(ROOT_DIR, relPath.split("/").join(path.sep));
-
+    
     if (!fs.existsSync(absPath)) {
       console.error(`MISSING MANIFEST FILE: ${relPath}`);
       missingCount++;

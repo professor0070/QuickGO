@@ -1,29 +1,98 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quickgo_shared_ui/quickgo_ui.dart';
 import '../providers.dart';
 import 'product_detail_screen.dart';
 
-class SearchScreen extends ConsumerWidget {
+class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends ConsumerState<SearchScreen> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(searchQueryProvider.notifier).state = '';
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        ref.read(searchQueryProvider.notifier).state = val;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final productsAsync = ref.watch(searchedProductsProvider);
     final query = ref.watch(searchQueryProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Search products...',
-            hintStyle: TextStyle(color: Colors.white70),
-            border: InputBorder.none,
+        title: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
           ),
-          onChanged: (val) {
-            ref.read(searchQueryProvider.notifier).state = val;
-          },
+          child: TextField(
+            controller: _controller,
+            autofocus: true,
+            style: const TextStyle(
+              color: quickGoTextDark,
+              fontSize: 16,
+              fontWeight: FontWeight.normal,
+            ),
+            cursorColor: quickGoPrimary,
+            decoration: InputDecoration(
+              hintText: 'Search food, fruits, vegetables...',
+              hintStyle: const TextStyle(
+                color: quickGoTextLight,
+                fontSize: 14,
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _controller,
+                builder: (context, value, child) {
+                  if (value.text.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.clear, color: quickGoTextLight, size: 20),
+                    onPressed: () {
+                      _controller.clear();
+                      _onSearchChanged('');
+                    },
+                  );
+                },
+              ),
+            ),
+            onChanged: _onSearchChanged,
+          ),
         ),
       ),
       body: query.length < 2

@@ -1,0 +1,73 @@
+{
+  "gate": "Gate 5B",
+  "name": "Authenticated Admin Access Permission & Audit Logging Validation",
+  "timestamp": "2026-07-15T04:45:00Z",
+  "status": "PASS",
+  "config": {
+    "scenarios": {
+      "admin_auth_check": {
+        "vus": 1,
+        "iterations": 5
+      }
+    }
+  },
+  "results": {
+    "total_checks": 212,
+    "checks_succeeded": 212,
+    "checks_failed": 0,
+    "success_rate": 1.0,
+    "matrix_validations": {
+      "anonymous": {
+        "dashboard": 401,
+        "users": 401,
+        "vendors": 401,
+        "riders": 401,
+        "orders": 401,
+        "reconciliation_summary": 401,
+        "payouts": 401,
+        "audit_logs": 401
+      },
+      "customer": {
+        "dashboard": 403,
+        "users": 403,
+        "vendors": 403,
+        "riders": 403,
+        "orders": 403,
+        "reconciliation_summary": 403,
+        "payouts": 403,
+        "audit_logs": 403
+      },
+      "vendor": {
+        "dashboard": 403,
+        "users": 403,
+        "vendors": 403,
+        "riders": 403,
+        "orders": 403,
+        "reconciliation_summary": 403,
+        "payouts": 403,
+        "audit_logs": 403
+      },
+      "rider": {
+        "dashboard": 403,
+        "users": 403,
+        "vendors": 403,
+        "riders": 403,
+        "orders": 403,
+        "reconciliation_summary": 403,
+        "payouts": 403,
+        "audit_logs": 403
+      },
+      "admin": {
+        "dashboard": 200,
+        "users": 200,
+        "vendors": 200,
+        "riders": 200,
+        "orders": 200,
+        "reconciliation_summary": 200,
+        "payouts": 200,
+        "audit_logs": 200
+      }
+    }
+  },
+  "verdict": "PASS"
+}

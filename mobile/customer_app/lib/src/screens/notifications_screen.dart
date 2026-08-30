@@ -15,27 +15,20 @@ class NotificationsScreen extends ConsumerWidget {
       body: notificationsAsync.when(
         data: (notifications) {
           if (notifications.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.notifications_none, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No notifications yet',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
+            return const QuickGoEmptyState(
+              title: 'No Notifications Yet',
+              message: 'Alerts and updates from merchants and orders appear here.',
+              icon: Icons.notifications_none_outlined,
             );
           }
 
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(notificationsProvider),
+            color: quickGoGreen,
             child: ListView.separated(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: notifications.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final notification = notifications[index] as Map<String, dynamic>;
                 final title = notification['title']?.toString() ?? 'Notification';
@@ -44,60 +37,96 @@ class NotificationsScreen extends ConsumerWidget {
                 final notificationId = notification['id']?.toString() ?? '';
                 final createdAt = notification['createdAt']?.toString() ?? '';
 
-                return ListTile(
-                  leading: Icon(
-                    isRead ? Icons.notifications_none : Icons.notifications_active,
-                    color: isRead ? Colors.grey : quickGoGreen,
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: quickGoLine),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  title: Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (body.isNotEmpty) Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatTimestamp(createdAt),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isRead ? quickGoSurface : quickGoGreen.withOpacity(0.05),
+                        shape: BoxShape.circle,
                       ),
-                    ],
+                      child: Icon(
+                        isRead ? Icons.notifications_none : Icons.notifications_active,
+                        color: isRead ? quickGoTextLight : quickGoGreen,
+                      ),
+                    ),
+                    title: Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                        color: quickGoTextDark,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (body.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(body, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: quickGoTextDark)),
+                        ],
+                        const SizedBox(height: 6),
+                        Text(
+                          _formatTimestamp(createdAt),
+                          style: const TextStyle(fontSize: 12, color: quickGoTextLight),
+                        ),
+                      ],
+                    ),
+                    onTap: isRead
+                        ? null
+                        : () async {
+                            try {
+                              final client = ref.read(apiClientProvider);
+                              await client.patchMap('/notifications/$notificationId/read', {});
+                              ref.invalidate(notificationsProvider);
+                              ref.invalidate(unreadNotificationCountProvider);
+                            } catch (_) {
+                              // Silently ignore mark-read errors
+                            }
+                          },
                   ),
-                  onTap: isRead
-                      ? null
-                      : () async {
-                          try {
-                            final client = ref.read(apiClientProvider);
-                            await client.patchMap('/notifications/$notificationId/read', {});
-                            ref.invalidate(notificationsProvider);
-                            ref.invalidate(unreadNotificationCountProvider);
-                          } catch (_) {
-                            // Silently ignore mark-read errors
-                          }
-                        },
                 );
               },
             ),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
-              const SizedBox(height: 12),
-              Text('Failed to load notifications\n$error', textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: () => ref.invalidate(notificationsProvider),
-                child: const Text('Retry'),
-              ),
-            ],
+        loading: () => ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: 4,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) => Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border.all(color: quickGoLine),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
+              children: [
+                QuickGoSkeleton(width: 40, height: 40, borderRadius: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      QuickGoSkeleton(width: 120, height: 16),
+                      SizedBox(height: 8),
+                      QuickGoSkeleton(width: 200, height: 12),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
+        error: (error, _) => QuickGoErrorState(
+          title: 'Failed to load notifications',
+          message: error.toString(),
+          onRetry: () => ref.invalidate(notificationsProvider),
         ),
       ),
     );

@@ -158,3 +158,4 @@ export class SubmitBankDetailsDto {
   @IsString()
   document_url?: string;
 }
+

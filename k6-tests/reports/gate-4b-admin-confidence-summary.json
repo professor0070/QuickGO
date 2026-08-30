@@ -1,0 +1,54 @@
+{
+  "gate": "Gate 4B",
+  "name": "Authenticated Admin Read-Only Performance Confidence Baseline",
+  "timestamp": "2026-07-15T03:15:00Z",
+  "status": "PASS",
+  "config": {
+    "warmup": {
+      "vus": 2,
+      "duration": "30s"
+    },
+    "measured": {
+      "vus": 5,
+      "duration": "4m",
+      "pacing_seconds": 12
+    }
+  },
+  "results": {
+    "total_requests": 213,
+    "warmup_requests": 12,
+    "measured_requests": 200,
+    "setup_requests": 1,
+    "success_rate": 1.0,
+    "failure_rate": 0.0,
+    "endpoints": {
+      "admin_dashboard": {
+        "samples": 100,
+        "failed": 0,
+        "latency_ms": {
+          "min": 20.24,
+          "avg": 36.82,
+          "med": 27.50,
+          "p90": 37.67,
+          "p95": 45.76,
+          "p99": 255.10,
+          "max": 255.10
+        }
+      },
+      "admin_attention_queue": {
+        "samples": 100,
+        "failed": 0,
+        "latency_ms": {
+          "min": 10.27,
+          "avg": 22.80,
+          "med": 21.00,
+          "p90": 31.09,
+          "p95": 33.59,
+          "p99": 38.32,
+          "max": 38.32
+        }
+      }
+    }
+  },
+  "verdict": "PASS"
+}

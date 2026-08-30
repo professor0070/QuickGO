@@ -531,10 +531,10 @@ export function stripExifJpeg(buffer: Buffer): Buffer {
   if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
     return buffer;
   }
-
+  
   let i = 2;
   const result: Buffer[] = [Buffer.from([0xff, 0xd8])];
-
+  
   while (i < buffer.length - 1) {
     if (buffer[i] === 0xff) {
       const marker = buffer[i + 1];
@@ -542,18 +542,18 @@ export function stripExifJpeg(buffer: Buffer): Buffer {
         result.push(buffer.subarray(i));
         break;
       }
-
+      
       if (marker === 0x00 || (marker >= 0xd0 && marker <= 0xd7)) {
         result.push(buffer.subarray(i, i + 2));
         i += 2;
         continue;
       }
-
+      
       if (i + 3 >= buffer.length) {
         result.push(buffer.subarray(i));
         break;
       }
-
+      
       const length = buffer.readUInt16BE(i + 2);
       if (marker === 0xe1) {
         // Skip APP1 segment (EXIF/metadata)
@@ -567,7 +567,7 @@ export function stripExifJpeg(buffer: Buffer): Buffer {
       break;
     }
   }
-
+  
   return Buffer.concat(result);
 }
 
@@ -576,19 +576,19 @@ export function stripExifPng(buffer: Buffer): Buffer {
   if (buffer.length < 8 || !buffer.subarray(0, 8).equals(signature)) {
     return buffer;
   }
-
+  
   const result: Buffer[] = [signature];
   let i = 8;
   while (i < buffer.length - 11) {
     const length = buffer.readUInt32BE(i);
     const type = buffer.toString("ascii", i + 4, i + 8);
     const chunkLength = 12 + length;
-
+    
     if (i + chunkLength > buffer.length) {
       result.push(buffer.subarray(i));
       break;
     }
-
+    
     if (type === "eXIf") {
       i += chunkLength;
     } else {

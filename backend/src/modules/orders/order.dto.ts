@@ -10,6 +10,12 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   customer_note?: string;
+
+  @IsOptional()
+  use_go_coins?: number;
+
+  @IsOptional()
+  use_cashback?: number;
 }
 
 export class CancelOrderDto {

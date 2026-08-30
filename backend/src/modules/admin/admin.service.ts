@@ -33,7 +33,8 @@ import {
   UpdateVendorStatusDto,
   CreateCategoryDto,
   UpdateCategoryDto,
-  ApprovePayoutDto
+  ApprovePayoutDto,
+  ReviewBankDetailsDto
 } from "./admin.dto";
 
 const PAYMENT_ATTENTION_STATUSES: PaymentStatus[] = [
@@ -80,9 +81,36 @@ export class AdminService {
     private readonly eventBus: DomainEventBus
   ) {}
 
-  async dashboard() {
+  private async getActiveZoneIds(actorId?: string): Promise<string[] | null> {
+    if (!actorId) return null;
+    const userRoles = await this.prisma.userRole.findMany({
+      where: { userId: actorId },
+      include: { role: true }
+    });
+    const codes = userRoles.map((ur) => ur.role.code);
+    if (codes.includes("SUPER_ADMIN")) {
+      return null;
+    }
+    if (codes.includes("ADMIN") || codes.includes("ZONE_ADMIN")) {
+      const assignments = await this.prisma.adminZoneAssignment.findMany({
+        where: {
+          adminUserId: actorId,
+          status: "ACTIVE",
+          revokedAt: null
+        },
+        select: { serviceZoneId: true }
+      });
+      return assignments.map((a) => a.serviceZoneId);
+    }
+    return null;
+  }
+
+  async dashboard(actorId?: string) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
+
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
+    const filter = activeZoneIds ? { serviceZoneId: { in: activeZoneIds } } : {};
 
     const [
       todayOrders,
@@ -95,23 +123,35 @@ export class AdminService {
       cancellationCount,
       todayEconomics
     ] = await Promise.all([
-      this.prisma.order.count({ where: { createdAt: { gte: start } } }),
-      this.prisma.order.count({ where: { status: "PLACED" } }),
-      this.prisma.order.count({ where: { status: "READY_FOR_PICKUP" } }),
+      this.prisma.order.count({ where: { ...filter, createdAt: { gte: start } } }),
+      this.prisma.order.count({ where: { ...filter, status: "PLACED" } }),
+      this.prisma.order.count({ where: { ...filter, status: "READY_FOR_PICKUP" } }),
       this.prisma.order.count({
         where: {
+          ...filter,
           riderId: null,
           status: { in: ["VENDOR_ACCEPTED", "READY_FOR_PICKUP"] }
         }
       }),
-      this.prisma.rider.count({ where: { isOnline: true, status: "APPROVED" } }),
-      this.prisma.supportTicket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
-      this.prisma.payment.count({ where: { status: { in: PAYMENT_ATTENTION_STATUSES } } }),
+      this.prisma.rider.count({ where: { ...filter, isOnline: true, status: "APPROVED" } }),
+      this.prisma.supportTicket.count({
+        where: {
+          ...(activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {}),
+          status: { in: ["OPEN", "IN_PROGRESS"] }
+        }
+      }),
+      this.prisma.payment.count({
+        where: {
+          ...(activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {}),
+          status: { in: PAYMENT_ATTENTION_STATUSES }
+        }
+      }),
       this.prisma.order.count({
-        where: { createdAt: { gte: start }, status: { in: CANCELLATION_STATUSES } }
+        where: { ...filter, createdAt: { gte: start }, status: { in: CANCELLATION_STATUSES } }
       }),
       this.prisma.order.aggregate({
         where: {
+          ...filter,
           createdAt: { gte: start },
           status: { in: ["PAYMENT_COLLECTED", "COMPLETED"] }
         },
@@ -122,7 +162,7 @@ export class AdminService {
       })
     ]);
 
-    const alerts = await this.attentionQueue();
+    const alerts = await this.attentionQueue(actorId);
 
     return {
       today_orders: todayOrders,
@@ -141,9 +181,13 @@ export class AdminService {
     };
   }
 
-  async attentionQueue() {
+  async attentionQueue(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
+    const filter = activeZoneIds ? { serviceZoneId: { in: activeZoneIds } } : {};
+
     const orders = await this.prisma.order.findMany({
       where: {
+        ...filter,
         status: {
           in: ["PLACED", "READY_FOR_PICKUP", "RIDER_ASSIGNED", "RIDER_FAILED"]
         }
@@ -168,9 +212,13 @@ export class AdminService {
     return items.sort((left, right) => right.age_minutes - left.age_minutes);
   }
 
-  reconciliationAlerts() {
+  async reconciliationAlerts(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.paymentReconciliationAlert.findMany({
-      where: { status: "OPEN" },
+      where: {
+        status: "OPEN",
+        ...(activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {})
+      },
       include: {
         order: {
           select: {
@@ -189,8 +237,10 @@ export class AdminService {
     });
   }
 
-  orders() {
+  async orders(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.order.findMany({
+      where: activeZoneIds ? { serviceZoneId: { in: activeZoneIds } } : {},
       orderBy: { createdAt: "desc" },
       include: {
         vendor: { select: { id: true, shopName: true } },
@@ -594,10 +644,37 @@ export class AdminService {
     });
   }
 
-  vendors() {
-    return this.prisma.vendor.findMany({
+  async vendors(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
+    const list = await this.prisma.vendor.findMany({
+      where: activeZoneIds ? { serviceZoneId: { in: activeZoneIds } } : {},
       orderBy: { createdAt: "desc" },
-      include: { serviceZone: true, staff: { include: { user: true } } }
+      take: 100,
+      include: { serviceZone: true, staff: { include: { user: true } }, bankDetails: true }
+    });
+    return this.enrichVendorsWithVerified(list);
+  }
+
+  async enrichVendorsWithVerified(vendors: any[]) {
+    if (vendors.length === 0) return [];
+    const ids = vendors.map(v => v.id);
+    const allDocs = await this.prisma.vendorComplianceDocument.findMany({
+      where: { vendorId: { in: ids } }
+    });
+    
+    return vendors.map(vendor => {
+      const docs = allDocs.filter(d => d.vendorId === vendor.id);
+      const required = ["FSSAI", "GST", "PAN"];
+      const approvedTypes = docs
+        .filter((doc: any) => doc.status === "APPROVED" && (!doc.expiresAt || new Date(doc.expiresAt) > new Date()))
+        .map((doc: any) => doc.type);
+      const documentsOk = required.every(t => approvedTypes.includes(t));
+      
+      const isVerified = (vendor.status === "APPROVED" || vendor.onboardingStatus === "APPROVED") &&
+        vendor.serviceZone?.isActive === true &&
+        documentsOk;
+        
+      return { ...vendor, isVerified };
     });
   }
 
@@ -678,15 +755,44 @@ export class AdminService {
     return updated;
   }
 
-  riders() {
-    return this.prisma.rider.findMany({
+  async riders(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
+    const list = await this.prisma.rider.findMany({
+      where: activeZoneIds ? { serviceZoneId: { in: activeZoneIds } } : {},
       orderBy: { createdAt: "desc" },
-      include: { serviceZone: true, user: true }
+      take: 100,
+      include: { serviceZone: true, user: true, bankDetails: true }
+    });
+    return this.enrichRidersWithVerified(list);
+  }
+
+  async enrichRidersWithVerified(riders: any[]) {
+    if (riders.length === 0) return [];
+    const ids = riders.map(r => r.id);
+    const allDocs = await this.prisma.riderKycDocument.findMany({
+      where: { riderId: { in: ids } }
+    });
+    
+    return riders.map(rider => {
+      const docs = allDocs.filter(d => d.riderId === rider.id);
+      const required = ["AADHAAR", "PAN", "DRIVING_LICENSE"];
+      const approvedTypes = docs
+        .filter((doc: any) => doc.status === "APPROVED")
+        .map((doc: any) => doc.type);
+      const documentsOk = required.every(t => approvedTypes.includes(t));
+      
+      const isVerified = (rider.status === "APPROVED" || rider.onboardingStatus === "APPROVED") &&
+        rider.serviceZone?.isActive === true &&
+        documentsOk;
+        
+      return { ...rider, isVerified };
     });
   }
 
-  riderOperations() {
+  async riderOperations(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.deliveryAssignment.findMany({
+      where: activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {},
       orderBy: { assignedAt: "desc" },
       take: 100,
       include: {
@@ -973,8 +1079,10 @@ export class AdminService {
     });
   }
 
-  supportTickets() {
+  async supportTickets(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.supportTicket.findMany({
+      where: activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {},
       orderBy: { createdAt: "desc" },
       include: { events: true },
       take: 100
@@ -1075,6 +1183,228 @@ export class AdminService {
     return document;
   }
 
+  async getDocumentStream(documentId: string) {
+    const document = await this.prisma.vendorComplianceDocument.findUnique({
+      where: { id: documentId }
+    });
+    let doc: any = document;
+    let filename = "";
+    if (document) {
+      filename = document.originalFileName || `${document.type}.pdf`;
+    } else {
+      const riderDoc = await this.prisma.riderKycDocument.findUnique({
+        where: { id: documentId }
+      });
+      if (!riderDoc) {
+        throw new NotFoundException("Document not found");
+      }
+      doc = riderDoc;
+      filename = riderDoc.originalFileName || `${riderDoc.type}.pdf`;
+    }
+
+    const url = doc.documentUrl;
+    if (url.startsWith("/uploads/")) {
+      const path = require("path");
+      const fs = require("fs");
+      const filePath = path.join(process.cwd(), "public", url);
+      if (!fs.existsSync(filePath)) {
+        throw new NotFoundException("Physical document file not found on server");
+      }
+      return {
+        type: "local" as const,
+        filePath,
+        mimeType: doc.mimeType || "application/pdf",
+        filename
+      };
+    } else {
+      return {
+        type: "remote" as const,
+        url,
+        mimeType: doc.mimeType || "application/pdf",
+        filename
+      };
+    }
+  }
+
+  async getVendorBankDetails(vendorId: string) {
+    const bankDetails = await this.prisma.bankDetails.findUnique({
+      where: { vendorId }
+    });
+    if (!bankDetails) {
+      throw new NotFoundException("Bank details not found for vendor");
+    }
+    
+    const key = process.env.BANK_DETAILS_ENCRYPTION_KEY;
+    if (!key) {
+      throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
+    }
+    
+    const cryptoUtil = require("../../common/crypto.util");
+    const decrypted = cryptoUtil.decryptAtRest(bankDetails.accountNumber, key);
+    const maskedNumber = decrypted.length > 4
+      ? "*".repeat(decrypted.length - 4) + decrypted.slice(-4)
+      : decrypted;
+      
+    return {
+      ...bankDetails,
+      accountNumber: maskedNumber
+    };
+  }
+
+  async getRiderBankDetails(riderId: string) {
+    const bankDetails = await this.prisma.bankDetails.findUnique({
+      where: { riderId }
+    });
+    if (!bankDetails) {
+      throw new NotFoundException("Bank details not found for rider");
+    }
+    
+    const key = process.env.BANK_DETAILS_ENCRYPTION_KEY;
+    if (!key) {
+      throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
+    }
+    
+    const cryptoUtil = require("../../common/crypto.util");
+    const decrypted = cryptoUtil.decryptAtRest(bankDetails.accountNumber, key);
+    const maskedNumber = decrypted.length > 4
+      ? "*".repeat(decrypted.length - 4) + decrypted.slice(-4)
+      : decrypted;
+      
+    return {
+      ...bankDetails,
+      accountNumber: maskedNumber
+    };
+  }
+
+  async getPartnerBankDetailHistory(partnerType: "vendor" | "rider", partnerId: string) {
+    const list = await this.prisma.bankDetailVersion.findMany({
+      where: partnerType === "vendor" ? { vendorId: partnerId } : { riderId: partnerId },
+      orderBy: { createdAt: "desc" }
+    });
+
+    const key = process.env.BANK_DETAILS_ENCRYPTION_KEY;
+    if (!key) {
+      throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
+    }
+    const cryptoUtil = require("../../common/crypto.util");
+
+    return list.map((item: any) => {
+      let maskedNumber = "";
+      try {
+        const decrypted = cryptoUtil.decryptAtRest(item.accountNumber, key);
+        maskedNumber = decrypted.length > 4
+          ? "*".repeat(decrypted.length - 4) + decrypted.slice(-4)
+          : decrypted;
+      } catch (e) {
+        maskedNumber = "DECRYPTION_FAILED";
+      }
+
+      return {
+        ...item,
+        accountNumber: maskedNumber
+      };
+    });
+  }
+
+  async reviewBankDetailsVersion(versionId: string, dto: ReviewBankDetailsDto, actorId?: string) {
+    const version = await this.prisma.bankDetailVersion.findUnique({
+      where: { id: versionId }
+    });
+    if (!version) {
+      throw new NotFoundException("Bank details version not found");
+    }
+
+    const partnerId = version.vendorId || version.riderId;
+    const partnerType = version.vendorId ? "vendor" : "rider";
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update the version record
+      const updatedVersion = await tx.bankDetailVersion.update({
+        where: { id: versionId },
+        data: {
+          status: dto.status === "APPROVED" ? "APPROVED" : "REJECTED",
+          rejectionReason: dto.status === "REJECTED" ? dto.reason : null,
+          reviewedByAdminId: actorId,
+          reviewedAt: new Date()
+        }
+      });
+
+      if (dto.status === "APPROVED") {
+        // Supersede any existing approved versions
+        await tx.bankDetailVersion.updateMany({
+          where: {
+            vendorId: version.vendorId,
+            riderId: version.riderId,
+            status: "APPROVED",
+            id: { not: versionId }
+          },
+          data: {
+            status: "SUPERSEDED"
+          }
+        });
+
+        // Copy to active bankDetails table
+        const activeData = {
+          accountHolderName: version.accountHolderName,
+          accountNumber: version.accountNumber,
+          ifsc: version.ifsc,
+          bankName: version.bankName,
+          branch: version.branch,
+          upiId: version.upiId,
+          proofDocumentUrl: version.proofDocumentUrl,
+          status: "VERIFIED"
+        };
+
+        if (version.vendorId) {
+          await tx.bankDetails.upsert({
+            where: { vendorId: version.vendorId },
+            create: {
+              vendorId: version.vendorId,
+              ...activeData
+            },
+            update: activeData
+          });
+        } else if (version.riderId) {
+          await tx.bankDetails.upsert({
+            where: { riderId: version.riderId },
+            create: {
+              riderId: version.riderId,
+              ...activeData
+            },
+            update: activeData
+          });
+        }
+      }
+
+      await this.auditAdminAction({
+        actorId,
+        action: dto.status === "APPROVED" ? "admin.bank_details_approved" : "admin.bank_details_rejected",
+        entityType: "bank_detail_version",
+        entityId: versionId,
+        reason: dto.reason || `Bank details version ${dto.status.toLowerCase()}`,
+        metadata: {
+          partnerId,
+          partnerType,
+          status: dto.status
+        }
+      });
+
+      // Emit event
+      await this.eventBus.publish(
+        dto.status === "APPROVED" ? "compliance.bank_details_approved" : "compliance.bank_details_rejected",
+        {
+          versionId,
+          partnerId: partnerId!,
+          partnerType,
+          ...(dto.status === "REJECTED" ? { reason: dto.reason || "" } : {})
+        } as any,
+        { source: "admin.service", actorId }
+      );
+
+      return updatedVersion;
+    });
+  }
+
   async reviewVendorComplianceDocument(
     documentId: string,
     dto: ReviewVendorComplianceDocumentDto,
@@ -1090,7 +1420,12 @@ export class AdminService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.vendorComplianceDocument.update({
         where: { id: documentId },
-        data: { status: dto.status as ComplianceStatus }
+        data: {
+          status: dto.status as ComplianceStatus,
+          rejectionReason: dto.status === "REJECTED" ? dto.reason : null,
+          reviewedAt: new Date(),
+          reviewedByAdminId: actorId
+        }
       });
 
       if (dto.fssai_status) {
@@ -1114,8 +1449,75 @@ export class AdminService {
         }
       });
 
+      await this.eventBus.publish(
+        dto.status === "APPROVED" ? "compliance.document_approved" : "compliance.document_rejected",
+        {
+          documentId,
+          partnerId: document.vendorId,
+          partnerType: "vendor",
+          type: document.type,
+          ...(dto.status === "REJECTED" ? { reason: dto.reason || "" } : {})
+        } as any,
+        { source: "admin.service", actorId }
+      );
+
       return updated;
     });
+  }
+
+  async processDocumentExpiries() {
+    const expiredDocs = await this.prisma.vendorComplianceDocument.findMany({
+      where: {
+        status: "APPROVED",
+        expiresAt: { lte: new Date() }
+      }
+    });
+
+    const expiringSoonDocs = await this.prisma.vendorComplianceDocument.findMany({
+      where: {
+        status: "APPROVED",
+        expiresAt: {
+          gt: new Date(),
+          lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+        }
+      }
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const doc of expiredDocs) {
+        await tx.vendorComplianceDocument.update({
+          where: { id: doc.id },
+          data: { status: "EXPIRED" }
+        });
+
+        await this.eventBus.publish(
+          "compliance.document_expired",
+          {
+            documentId: doc.id,
+            partnerId: doc.vendorId,
+            partnerType: "vendor",
+            type: doc.type
+          },
+          { source: "admin.service" }
+        );
+      }
+
+      for (const doc of expiringSoonDocs) {
+        await this.eventBus.publish(
+          "compliance.document_expiring_soon",
+          {
+            documentId: doc.id,
+            partnerId: doc.vendorId,
+            partnerType: "vendor",
+            type: doc.type,
+            expiresAt: doc.expiresAt!.toISOString()
+          },
+          { source: "admin.service" }
+        );
+      }
+    });
+
+    return { processed: expiredDocs.length, warned: expiringSoonDocs.length };
   }
 
   listRiderKycDocuments(riderId: string) {
@@ -1169,7 +1571,12 @@ export class AdminService {
 
     const updated = await this.prisma.riderKycDocument.update({
       where: { id: documentId },
-      data: { status: dto.status as ComplianceStatus }
+      data: {
+        status: dto.status as ComplianceStatus,
+        rejectionReason: dto.status === "REJECTED" ? dto.reason : null,
+        reviewedAt: new Date(),
+        reviewedByAdminId: actorId
+      }
     });
 
     await this.auditAdminAction({
@@ -1181,10 +1588,31 @@ export class AdminService {
       metadata: { riderId: document.riderId, fromStatus: document.status, toStatus: dto.status }
     });
 
+    await this.eventBus.publish(
+      dto.status === "APPROVED" ? "compliance.document_approved" : "compliance.document_rejected",
+      {
+        documentId,
+        partnerId: document.riderId,
+        partnerType: "rider",
+        type: document.type,
+        ...(dto.status === "REJECTED" ? { reason: dto.reason || "" } : {})
+      } as any,
+      { source: "admin.service", actorId }
+    );
+
     return updated;
   }
 
-  async reconciliationSummary() {
+  async reconciliationSummary(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
+    const filter = activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {};
+    const payoutFilter = activeZoneIds ? {
+      OR: [
+        { vendor: { serviceZoneId: { in: activeZoneIds } } },
+        { rider: { serviceZoneId: { in: activeZoneIds } } }
+      ]
+    } : {};
+
     const [
       paymentAgg,
       pendingCount,
@@ -1202,60 +1630,68 @@ export class AdminService {
       holdCount
     ] = await Promise.all([
       this.prisma.payment.aggregate({
+        where: filter,
         _sum: { amount: true, amountCollected: true },
         _count: { id: true }
       }),
       this.prisma.payment.count({
-        where: { status: { in: ["PENDING", "PENDING_COLLECTION", "COLLECTION_PENDING", "COLLECTED_UNVERIFIED"] } }
+        where: { ...filter, status: { in: ["PENDING", "PENDING_COLLECTION", "COLLECTION_PENDING", "COLLECTED_UNVERIFIED"] } }
       }),
       this.prisma.payment.count({
-        where: { status: { in: ["VERIFIED", "SETTLED", "RECONCILED"] } }
+        where: { ...filter, status: { in: ["VERIFIED", "SETTLED", "RECONCILED"] } }
       }),
       this.prisma.payment.count({
-        where: { status: { in: ["SHORT_COLLECTED", "OVER_COLLECTED"] } }
+        where: { ...filter, status: { in: ["SHORT_COLLECTED", "OVER_COLLECTED"] } }
       }),
       this.prisma.payment.count({
-        where: { status: "DISPUTED" }
+        where: { ...filter, status: "DISPUTED" }
       }),
       this.prisma.payment.count({
-        where: { status: "SUCCESS" }
+        where: { ...filter, status: "SUCCESS" }
       }),
       this.prisma.paymentReconciliationAlert.groupBy({
         by: ["type"],
-        where: { status: "OPEN" },
+        where: {
+          status: "OPEN",
+          ...(activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {})
+        },
         _count: { id: true }
       }),
       this.prisma.paymentReconciliationAlert.groupBy({
         by: ["severity"],
-        where: { status: "OPEN" },
+        where: {
+          status: "OPEN",
+          ...(activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {})
+        },
         _count: { id: true }
       }),
       this.prisma.payout.aggregate({
+        where: payoutFilter,
         _sum: { amount: true },
         _count: { id: true }
       }),
       this.prisma.payout.aggregate({
-        where: { payeeType: "VENDOR", status: { in: ["PAYOUT_PENDING", "PAYOUT_PARTIAL"] } },
+        where: { ...payoutFilter, payeeType: "VENDOR", status: { in: ["PAYOUT_PENDING", "PAYOUT_PARTIAL"] } },
         _sum: { amount: true },
         _count: { id: true }
       }),
       this.prisma.payout.aggregate({
-        where: { payeeType: "RIDER", status: { in: ["PAYOUT_PENDING", "PAYOUT_PARTIAL"] } },
+        where: { ...payoutFilter, payeeType: "RIDER", status: { in: ["PAYOUT_PENDING", "PAYOUT_PARTIAL"] } },
         _sum: { amount: true },
         _count: { id: true }
       }),
       this.prisma.payout.aggregate({
-        where: { payeeType: "VENDOR", status: "PAYOUT_PAID" },
+        where: { ...payoutFilter, payeeType: "VENDOR", status: "PAYOUT_PAID" },
         _sum: { amount: true },
         _count: { id: true }
       }),
       this.prisma.payout.aggregate({
-        where: { payeeType: "RIDER", status: "PAYOUT_PAID" },
+        where: { ...payoutFilter, payeeType: "RIDER", status: "PAYOUT_PAID" },
         _sum: { amount: true },
         _count: { id: true }
       }),
       this.prisma.payout.count({
-        where: { status: "PAYOUT_HOLD" }
+        where: { ...payoutFilter, status: "PAYOUT_HOLD" }
       })
     ]);
 
@@ -1300,8 +1736,10 @@ export class AdminService {
     };
   }
 
-  allPayments() {
+  async allPayments(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.payment.findMany({
+      where: activeZoneIds ? { order: { serviceZoneId: { in: activeZoneIds } } } : {},
       orderBy: { createdAt: "desc" },
       include: {
         order: {
@@ -1325,15 +1763,24 @@ export class AdminService {
     });
   }
 
-  auditLogs() {
+  async auditLogs(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.auditLog.findMany({
+      where: activeZoneIds ? { serviceZoneId: { in: activeZoneIds } } : {},
       orderBy: { createdAt: "desc" },
       take: 200
     });
   }
 
-  payouts() {
+  async payouts(actorId?: string) {
+    const activeZoneIds = await this.getActiveZoneIds(actorId);
     return this.prisma.payout.findMany({
+      where: activeZoneIds ? {
+        OR: [
+          { vendor: { serviceZoneId: { in: activeZoneIds } } },
+          { rider: { serviceZoneId: { in: activeZoneIds } } }
+        ]
+      } : {},
       orderBy: { createdAt: "desc" },
       include: {
         vendor: { select: { id: true, shopName: true, ownerPhone: true } },
@@ -1538,9 +1985,13 @@ export class AdminService {
       throw new BadRequestException("Actor does not have administrative privileges");
     }
 
-    if (roleCode === "SUPER_ADMIN" || roleCode === "ADMIN") {
+    if (roleCode === "ADMIN") {
+      throw new BadRequestException("Standalone ADMIN role is deprecated and disabled. QuickGO supports SUPER_ADMIN and ZONE_ADMIN only.");
+    }
+
+    if (roleCode === "SUPER_ADMIN") {
       if (!isSuperAdmin) {
-        throw new BadRequestException("Only SUPER_ADMIN can assign ADMIN or SUPER_ADMIN roles");
+        throw new BadRequestException("Only SUPER_ADMIN can assign SUPER_ADMIN roles");
       }
     }
 
@@ -1618,9 +2069,13 @@ export class AdminService {
       throw new BadRequestException("Actor does not have administrative privileges");
     }
 
-    if (roleCode === "SUPER_ADMIN" || roleCode === "ADMIN") {
+    if (roleCode === "ADMIN") {
+      throw new BadRequestException("Standalone ADMIN role is deprecated and disabled.");
+    }
+
+    if (roleCode === "SUPER_ADMIN") {
       if (!isSuperAdmin) {
-        throw new BadRequestException("Only SUPER_ADMIN can remove ADMIN or SUPER_ADMIN roles");
+        throw new BadRequestException("Only SUPER_ADMIN can remove SUPER_ADMIN roles");
       }
     }
 
@@ -1681,5 +2136,536 @@ export class AdminService {
     });
 
     return { message: `Role ${roleCode} removed successfully` };
+  }
+
+  async addPincodeToZone(zoneId: string, dto: any, actorId: string) {
+    const zone = await this.prisma.serviceZone.findUnique({ where: { id: zoneId } });
+    if (!zone) {
+      throw new NotFoundException("Service zone not found");
+    }
+    const pincode = await this.prisma.serviceZonePincode.upsert({
+      where: {
+        serviceZoneId_pincode: { serviceZoneId: zoneId, pincode: dto.pincode }
+      },
+      update: { isPrimary: dto.is_primary ?? true },
+      create: { serviceZoneId: zoneId, pincode: dto.pincode, isPrimary: dto.is_primary ?? true }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_pincode_added",
+        entityType: "service_zone",
+        entityId: zoneId,
+        serviceZoneId: zoneId,
+        reason: `Mapped pincode ${dto.pincode}`,
+        metadata: { pincode: dto.pincode }
+      }
+    });
+
+    return pincode;
+  }
+
+  async removePincodeFromZone(zoneId: string, pincode: string, actorId: string) {
+    await this.prisma.serviceZonePincode.delete({
+      where: {
+        serviceZoneId_pincode: { serviceZoneId: zoneId, pincode }
+      }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_pincode_removed",
+        entityType: "service_zone",
+        entityId: zoneId,
+        serviceZoneId: zoneId,
+        reason: `Removed pincode ${pincode}`,
+        metadata: { pincode }
+      }
+    });
+
+    return { message: "Pincode removed successfully" };
+  }
+
+  async createZoneAdmin(dto: any, actorId: string) {
+    let user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          phone: dto.phone,
+          name: dto.name,
+          email: dto.email,
+          status: "ACTIVE"
+        }
+      });
+    }
+
+    const role = await this.prisma.role.upsert({
+      where: { code: "ZONE_ADMIN" },
+      update: {},
+      create: { code: "ZONE_ADMIN", name: "Zone Admin" }
+    });
+
+    const userRole = await this.prisma.userRole.upsert({
+      where: {
+        userId_roleId: { userId: user.id, roleId: role.id }
+      },
+      update: {},
+      create: { userId: user.id, roleId: role.id, assignedBy: actorId }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_admin_created",
+        entityType: "user",
+        entityId: user.id,
+        reason: `Created Zone Admin account with phone ${dto.phone}`,
+        metadata: { phone: dto.phone }
+      }
+    });
+
+    return { user, userRole };
+  }
+
+  async assignZoneAdmin(dto: any, actorId: string) {
+    const userRoles = await this.prisma.userRole.findMany({
+      where: { userId: dto.admin_user_id },
+      include: { role: true }
+    });
+    const codes = userRoles.map((ur) => ur.role.code);
+    if (!codes.includes("ZONE_ADMIN") && !codes.includes("ADMIN")) {
+      throw new BadRequestException("Target user must hold ADMIN or ZONE_ADMIN role");
+    }
+
+    const zone = await this.prisma.serviceZone.findUnique({ where: { id: dto.service_zone_id } });
+    if (!zone) {
+      throw new NotFoundException("Service zone not found");
+    }
+
+    const assignment = await this.prisma.adminZoneAssignment.create({
+      data: {
+        adminUserId: dto.admin_user_id,
+        serviceZoneId: dto.service_zone_id,
+        assignedBySuperAdminId: actorId
+      }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_assigned",
+        entityType: "user",
+        entityId: dto.admin_user_id,
+        serviceZoneId: dto.service_zone_id,
+        reason: `Assigned admin to zone ${zone.name}`,
+        metadata: { zoneId: dto.service_zone_id }
+      }
+    });
+
+    return assignment;
+  }
+
+  async revokeZoneAssignment(assignmentId: string, actorId: string) {
+    const assignment = await this.prisma.adminZoneAssignment.findUnique({
+      where: { id: assignmentId }
+    });
+    if (!assignment) {
+      throw new NotFoundException("Assignment not found");
+    }
+
+    const updated = await this.prisma.adminZoneAssignment.update({
+      where: { id: assignmentId },
+      data: {
+        status: "REVOKED",
+        revokedAt: new Date(),
+        revocationReason: "Revoked by Super Admin"
+      }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_assignment_revoked",
+        entityType: "admin_zone_assignment",
+        entityId: assignmentId,
+        serviceZoneId: assignment.serviceZoneId,
+        reason: "Revoked zone assignment"
+      }
+    });
+
+    return updated;
+  }
+
+  async approveZoneAssignment(assignmentId: string, actorId: string) {
+    const assignment = await this.prisma.adminZoneAssignment.findUnique({ where: { id: assignmentId } });
+    if (!assignment) throw new NotFoundException("Assignment not found");
+
+    const updated = await this.prisma.adminZoneAssignment.update({
+      where: { id: assignmentId },
+      data: { status: "APPROVED", revokedAt: null }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_admin_approved",
+        entityType: "admin_zone_assignment",
+        entityId: assignmentId,
+        serviceZoneId: assignment.serviceZoneId,
+        reason: "Approved Zone Admin account"
+      }
+    });
+
+    return updated;
+  }
+
+  async rejectZoneAssignment(assignmentId: string, actorId: string, reason?: string) {
+    const assignment = await this.prisma.adminZoneAssignment.findUnique({ where: { id: assignmentId } });
+    if (!assignment) throw new NotFoundException("Assignment not found");
+
+    const updated = await this.prisma.adminZoneAssignment.update({
+      where: { id: assignmentId },
+      data: { status: "REJECTED", revokedAt: new Date(), revocationReason: reason || "Rejected by Super Admin" }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_admin_rejected",
+        entityType: "admin_zone_assignment",
+        entityId: assignmentId,
+        serviceZoneId: assignment.serviceZoneId,
+        reason: reason || "Rejected Zone Admin account"
+      }
+    });
+
+    return updated;
+  }
+
+  async suspendZoneAssignment(assignmentId: string, actorId: string, reason?: string) {
+    const assignment = await this.prisma.adminZoneAssignment.findUnique({ where: { id: assignmentId } });
+    if (!assignment) throw new NotFoundException("Assignment not found");
+
+    const updated = await this.prisma.adminZoneAssignment.update({
+      where: { id: assignmentId },
+      data: { status: "SUSPENDED", revokedAt: new Date(), revocationReason: reason || "Suspended by Super Admin" }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_admin_suspended",
+        entityType: "admin_zone_assignment",
+        entityId: assignmentId,
+        serviceZoneId: assignment.serviceZoneId,
+        reason: reason || "Suspended Zone Admin account"
+      }
+    });
+
+    return updated;
+  }
+
+  async reactivateZoneAssignment(assignmentId: string, actorId: string) {
+    const assignment = await this.prisma.adminZoneAssignment.findUnique({ where: { id: assignmentId } });
+    if (!assignment) throw new NotFoundException("Assignment not found");
+
+    const updated = await this.prisma.adminZoneAssignment.update({
+      where: { id: assignmentId },
+      data: { status: "APPROVED", revokedAt: null, revocationReason: null }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_admin_reactivated",
+        entityType: "admin_zone_assignment",
+        entityId: assignmentId,
+        serviceZoneId: assignment.serviceZoneId,
+        reason: "Reactivated Zone Admin account"
+      }
+    });
+
+    return updated;
+  }
+
+  async deactivateServiceZone(zoneId: string, actorId: string) {
+    const zone = await this.prisma.serviceZone.findUnique({ where: { id: zoneId } });
+    if (!zone) throw new NotFoundException("Service zone not found");
+
+    const updated = await this.prisma.serviceZone.update({
+      where: { id: zoneId },
+      data: { isActive: false, status: "DEACTIVATED" }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_deactivated",
+        entityType: "service_zone",
+        entityId: zoneId,
+        serviceZoneId: zoneId,
+        reason: `Deactivated operational zone ${zone.name}`
+      }
+    });
+
+    return updated;
+  }
+
+  async reactivateServiceZone(zoneId: string, actorId: string) {
+    const zone = await this.prisma.serviceZone.findUnique({ where: { id: zoneId } });
+    if (!zone) throw new NotFoundException("Service zone not found");
+
+    const updated = await this.prisma.serviceZone.update({
+      where: { id: zoneId },
+      data: { isActive: true, status: "ACTIVE" }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.zone_reactivated",
+        entityType: "service_zone",
+        entityId: zoneId,
+        serviceZoneId: zoneId,
+        reason: `Reactivated operational zone ${zone.name}`
+      }
+    });
+
+    return updated;
+  }
+
+  async suspendPartner(partnerId: string, reason: string, actorId: string) {
+    let partnerType: "vendor" | "rider";
+    let serviceZoneId: string | undefined;
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: partnerId } });
+    if (vendor) {
+      partnerType = "vendor";
+      serviceZoneId = vendor.serviceZoneId;
+      await this.prisma.vendor.update({
+        where: { id: partnerId },
+        data: { status: "SUSPENDED", onboardingStatus: "SUSPENDED", isOpen: false }
+      });
+    } else {
+      const rider = await this.prisma.rider.findUnique({ where: { id: partnerId } });
+      if (!rider) throw new NotFoundException("Partner not found");
+      partnerType = "rider";
+      serviceZoneId = rider.serviceZoneId;
+      await this.prisma.rider.update({
+        where: { id: partnerId },
+        data: { status: "SUSPENDED", onboardingStatus: "SUSPENDED", isOnline: false }
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.partner_suspended",
+        entityType: partnerType,
+        entityId: partnerId,
+        serviceZoneId,
+        reason,
+        metadata: { status: "SUSPENDED" }
+      }
+    });
+
+    await this.eventBus.publish(
+      "compliance.partner_suspended",
+      { partnerId, partnerType, reason },
+      { source: "admin.service", actorId }
+    );
+
+    return { id: partnerId, status: "SUSPENDED" };
+  }
+
+  async reinstatePartner(partnerId: string, reason: string, actorId: string) {
+    let partnerType: "vendor" | "rider";
+    let serviceZoneId: string | undefined;
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: partnerId } });
+    if (vendor) {
+      if (vendor.status !== "SUSPENDED" && vendor.status !== "PAUSED") {
+        throw new BadRequestException("Only suspended or paused vendors can be reinstated");
+      }
+      partnerType = "vendor";
+      serviceZoneId = vendor.serviceZoneId;
+      await this.prisma.vendor.update({
+        where: { id: partnerId },
+        data: { status: "ACTIVE", onboardingStatus: "APPROVED" }
+      });
+    } else {
+      const rider = await this.prisma.rider.findUnique({ where: { id: partnerId } });
+      if (!rider) throw new NotFoundException("Partner not found");
+      if (rider.status !== "SUSPENDED" && rider.status !== "PAUSED") {
+        throw new BadRequestException("Only suspended or paused riders can be reinstated");
+      }
+      partnerType = "rider";
+      serviceZoneId = rider.serviceZoneId;
+      await this.prisma.rider.update({
+        where: { id: partnerId },
+        data: { status: "ACTIVE", onboardingStatus: "APPROVED" }
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.partner_reinstated",
+        entityType: partnerType,
+        entityId: partnerId,
+        serviceZoneId,
+        reason,
+        metadata: { status: "ACTIVE" }
+      }
+    });
+
+    await this.eventBus.publish(
+      "compliance.partner_reinstated",
+      { partnerId, partnerType, reason },
+      { source: "admin.service", actorId }
+    );
+
+    return { id: partnerId, status: "ACTIVE" };
+  }
+
+  async terminatePartner(partnerId: string, reason: string, actorId: string) {
+    let partnerType: "vendor" | "rider";
+    let serviceZoneId: string | undefined;
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: partnerId } });
+    if (vendor) {
+      partnerType = "vendor";
+      serviceZoneId = vendor.serviceZoneId;
+      await this.prisma.vendor.update({
+        where: { id: partnerId },
+        data: { status: "AGREEMENT_TERMINATED", onboardingStatus: "AGREEMENT_TERMINATED", isOpen: false }
+      });
+    } else {
+      const rider = await this.prisma.rider.findUnique({ where: { id: partnerId } });
+      if (!rider) throw new NotFoundException("Partner not found");
+      partnerType = "rider";
+      serviceZoneId = rider.serviceZoneId;
+      await this.prisma.rider.update({
+        where: { id: partnerId },
+        data: { status: "AGREEMENT_TERMINATED", onboardingStatus: "AGREEMENT_TERMINATED", isOnline: false }
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.agreement_terminated",
+        entityType: partnerType,
+        entityId: partnerId,
+        serviceZoneId,
+        reason,
+        metadata: { status: "AGREEMENT_TERMINATED" }
+      }
+    });
+
+    await this.eventBus.publish(
+      "compliance.agreement_terminated",
+      { partnerId, partnerType, reason },
+      { source: "admin.service", actorId }
+    );
+
+    return { id: partnerId, status: "AGREEMENT_TERMINATED" };
+  }
+
+  async togglePartnerSuspension(partnerType: "vendor" | "rider", partnerId: string, dto: any, actorId: string) {
+    const status = dto.status ? "SUSPENDED" : "ACTIVE";
+    let updated: any;
+    let serviceZoneId: string | undefined;
+
+    if (partnerType === "vendor") {
+      const vendor = await this.prisma.vendor.findUnique({ where: { id: partnerId } });
+      if (!vendor) throw new NotFoundException("Vendor not found");
+      serviceZoneId = vendor.serviceZoneId;
+      updated = await this.prisma.vendor.update({
+        where: { id: partnerId },
+        data: { status, onboardingStatus: status, isOpen: false }
+      });
+    } else {
+      const rider = await this.prisma.rider.findUnique({ where: { id: partnerId } });
+      if (!rider) throw new NotFoundException("Rider not found");
+      serviceZoneId = rider.serviceZoneId;
+      updated = await this.prisma.rider.update({
+        where: { id: partnerId },
+        data: { status, onboardingStatus: status, isOnline: false }
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: dto.status ? "admin.partner_suspended" : "admin.partner_reinstated",
+        entityType: partnerType,
+        entityId: partnerId,
+        serviceZoneId,
+        reason: dto.reason,
+        metadata: { status }
+      }
+    });
+
+    return updated;
+  }
+
+  async offboardPartner(partnerType: "vendor" | "rider", partnerId: string, actorId: string) {
+    let updated: any;
+    let serviceZoneId: string | undefined;
+
+    if (partnerType === "vendor") {
+      const vendor = await this.prisma.vendor.findUnique({ where: { id: partnerId } });
+      if (!vendor) throw new NotFoundException("Vendor not found");
+      serviceZoneId = vendor.serviceZoneId;
+      updated = await this.prisma.vendor.update({
+        where: { id: partnerId },
+        data: { status: "OFFBOARDED", onboardingStatus: "OFFBOARDED", isOpen: false }
+      });
+    } else {
+      const rider = await this.prisma.rider.findUnique({ where: { id: partnerId } });
+      if (!rider) throw new NotFoundException("Rider not found");
+      serviceZoneId = rider.serviceZoneId;
+      updated = await this.prisma.rider.update({
+        where: { id: partnerId },
+        data: { status: "OFFBOARDED", onboardingStatus: "OFFBOARDED", isOnline: false }
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "admin.partner_offboarded",
+        entityType: partnerType,
+        entityId: partnerId,
+        serviceZoneId,
+        reason: "Offboarded by Admin"
+      }
+    });
+
+    return updated;
+  }
+
+  async listZoneAssignments() {
+    const assignments = await this.prisma.adminZoneAssignment.findMany({
+      where: { status: "ACTIVE", revokedAt: null },
+      include: {
+        serviceZone: { select: { id: true, name: true } }
+      }
+    });
+
+    const userIds = assignments.map((a: any) => a.adminUserId);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, phone: true }
+    });
+
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
+    return assignments.map((a: any) => ({
+      ...a,
+      adminUser: userMap.get(a.adminUserId) || { id: a.adminUserId, name: "Unknown", phone: "" }
+    }));
   }
 }

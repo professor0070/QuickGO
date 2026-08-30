@@ -5,6 +5,11 @@ type TableName =
   | "customers"
   | "addresses"
   | "serviceZones"
+  | "serviceZonePincodes"
+  | "adminZoneAssignments"
+  | "partnerZoneAssignments"
+  | "bankDetails"
+  | "bankDetailVersions"
   | "categories"
   | "vendors"
   | "vendorStaff"
@@ -43,7 +48,8 @@ const roleCodes = [
   "RIDER",
   "ADMIN",
   "SUPER_ADMIN",
-  "SUPPORT"
+  "SUPPORT",
+  "ZONE_ADMIN"
 ];
 
 const categories = [
@@ -60,6 +66,11 @@ export class InMemoryPrismaService {
   customer: any;
   address: any;
   serviceZone: any;
+  serviceZonePincode: any;
+  adminZoneAssignment: any;
+  partnerZoneAssignment: any;
+  bankDetails: any;
+  bankDetailVersion: any;
   category: any;
   vendor: any;
   vendorStaff: any;
@@ -130,7 +141,12 @@ export class InMemoryPrismaService {
       slaEvents: [],
       riderDevices: [],
       customerDevices: [],
-      deviceSessions: []
+      deviceSessions: [],
+      serviceZonePincodes: [],
+      adminZoneAssignments: [],
+      partnerZoneAssignments: [],
+      bankDetails: [],
+      bankDetailVersions: []
     };
 
     for (const code of roleCodes) {
@@ -354,6 +370,7 @@ export class InMemoryPrismaService {
           id: this.id("serviceZone"),
           radiusKm: 3,
           isActive: true,
+          status: "ACTIVE",
           createdAt: new Date(),
           updatedAt: new Date(),
           ...data
@@ -487,6 +504,8 @@ export class InMemoryPrismaService {
       },
       findUnique: async ({ where }: any) =>
         this.store.vendorComplianceDocuments.find((item) => item.id === where.id) ?? null,
+      findFirst: async ({ where }: any) =>
+        this.store.vendorComplianceDocuments.find((item) => this.matches(item, where)) ?? null,
       findMany: async ({ where, orderBy }: any = {}) =>
         this.sort(
           this.store.vendorComplianceDocuments.filter((item) => this.matches(item, where)),
@@ -499,9 +518,7 @@ export class InMemoryPrismaService {
         }
         Object.assign(document, data, { updatedAt: new Date() });
         return document;
-      },
-      findFirst: async ({ where }: any) =>
-        this.store.vendorComplianceDocuments.find((item) => this.matches(item, where)) ?? null,
+      }
     };
 
     this.rider = {
@@ -559,6 +576,8 @@ export class InMemoryPrismaService {
       },
       findUnique: async ({ where }: any) =>
         this.store.riderKycDocuments.find((item) => item.id === where.id) ?? null,
+      findFirst: async ({ where }: any) =>
+        this.store.riderKycDocuments.find((item) => this.matches(item, where)) ?? null,
       findMany: async ({ where, orderBy }: any = {}) =>
         this.sort(
           this.store.riderKycDocuments.filter((item) => this.matches(item, where)),
@@ -571,9 +590,7 @@ export class InMemoryPrismaService {
         }
         Object.assign(document, data, { updatedAt: new Date() });
         return document;
-      },
-      findFirst: async ({ where }: any) =>
-        this.store.riderKycDocuments.find((item) => this.matches(item, where)) ?? null,
+      }
     };
 
     this.product = {
@@ -1221,6 +1238,113 @@ export class InMemoryPrismaService {
       },
       findMany: async ({ where }: any = {}) =>
         this.store.deviceSessions.filter((item) => this.matches(item, where))
+    };
+
+    this.serviceZonePincode = {
+      create: async ({ data }: any) => {
+        const row = { id: this.id("pincode"), createdAt: new Date(), ...data };
+        this.store.serviceZonePincodes.push(row);
+        return row;
+      },
+      findMany: async ({ where }: any = {}) =>
+        this.store.serviceZonePincodes.filter((item) => this.matches(item, where)),
+      findUnique: async ({ where }: any) =>
+        this.store.serviceZonePincodes.find((item) => this.matches(item, where)) ?? null,
+      delete: async ({ where }: any) => {
+        const idx = this.store.serviceZonePincodes.findIndex((item) => this.matches(item, where));
+        if (idx !== -1) {
+          const removed = this.store.serviceZonePincodes[idx];
+          this.store.serviceZonePincodes.splice(idx, 1);
+          return removed;
+        }
+        return null;
+      }
+    };
+
+    this.adminZoneAssignment = {
+      create: async ({ data }: any) => {
+        const row = { id: this.id("assignment"), assignedAt: new Date(), status: data.status ?? "PENDING", ...data };
+        this.store.adminZoneAssignments.push(row);
+        return row;
+      },
+      findMany: async ({ where, include }: any = {}) => {
+        const rows = this.store.adminZoneAssignments.filter((item) => this.matches(item, where));
+        if (include?.serviceZone) {
+          return rows.map((r) => ({
+            ...r,
+            serviceZone: this.store.serviceZones.find((sz) => sz.id === r.serviceZoneId)
+          }));
+        }
+        return rows;
+      },
+      findUnique: async ({ where }: any) =>
+        this.store.adminZoneAssignments.find((item) => item.id === where.id) ?? null,
+      update: async ({ where, data }: any) => {
+        const row = this.store.adminZoneAssignments.find((item) => item.id === where.id);
+        if (row) {
+          Object.assign(row, data);
+          return row;
+        }
+        throw new Error("Admin zone assignment not found");
+      }
+    };
+
+    this.partnerZoneAssignment = {
+      create: async ({ data }: any) => {
+        const row = { id: this.id("assignment"), assignedAt: new Date(), status: "ACTIVE", ...data };
+        this.store.partnerZoneAssignments.push(row);
+        return row;
+      },
+      findMany: async ({ where }: any = {}) =>
+        this.store.partnerZoneAssignments.filter((item) => this.matches(item, where)),
+      updateMany: async ({ where, data }: any) => {
+        const rows = this.store.partnerZoneAssignments.filter((item) => this.matches(item, where));
+        rows.forEach((item) => Object.assign(item, data));
+        return { count: rows.length };
+      }
+    };
+
+    this.bankDetails = {
+      create: async ({ data }: any) => {
+        const row = { id: this.id("bank"), createdAt: new Date(), updatedAt: new Date(), ...data };
+        this.store.bankDetails.push(row);
+        return row;
+      },
+      findUnique: async ({ where }: any) =>
+        this.store.bankDetails.find((item) => item.vendorId === where.vendorId || item.riderId === where.riderId || item.id === where.id) ?? null,
+      upsert: async ({ where, create, update }: any) => {
+        const existing = this.store.bankDetails.find((item) => item.vendorId === where.vendorId || item.riderId === where.riderId);
+        if (existing) {
+          Object.assign(existing, update, { updatedAt: new Date() });
+          return existing;
+        }
+        const row = { id: this.id("bank"), createdAt: new Date(), updatedAt: new Date(), ...create };
+        this.store.bankDetails.push(row);
+        return row;
+      }
+    };
+
+    this.bankDetailVersion = {
+      create: async ({ data }: any) => {
+        const row = { id: this.id("bankVersion"), status: "PENDING_REVIEW", createdAt: new Date(), updatedAt: new Date(), ...data };
+        this.store.bankDetailVersions.push(row);
+        return row;
+      },
+      findUnique: async ({ where }: any) =>
+        this.store.bankDetailVersions.find((item) => item.id === where.id) ?? null,
+      findMany: async ({ where }: any = {}) =>
+        this.store.bankDetailVersions.filter((item) => this.matches(item, where)),
+      update: async ({ where, data }: any) => {
+        const existing = this.store.bankDetailVersions.find((item) => item.id === where.id);
+        if (!existing) throw new Error("Bank details version not found");
+        Object.assign(existing, data, { updatedAt: new Date() });
+        return existing;
+      },
+      updateMany: async ({ where, data }: any) => {
+        const rows = this.store.bankDetailVersions.filter((item) => this.matches(item, where));
+        rows.forEach((item) => Object.assign(item, data));
+        return { count: rows.length };
+      }
     };
   }
 

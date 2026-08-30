@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: Admin12_secret_password_here
       POSTGRES_DB: quickgo_production
     ports:
-      - "5432:5432"
+      # SECURITY: Bind to localhost only. Use "5432:5432" only for Docker-to-host networking needs.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

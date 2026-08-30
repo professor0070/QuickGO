@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quickgo_shared_ui/quickgo_ui.dart';
 import '../providers.dart';
 
 class AddAddressScreen extends ConsumerStatefulWidget {
@@ -30,18 +31,22 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
         _city.text.trim().isEmpty ||
         _state.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all mandatory fields.')),
+        const SnackBar(content: Text('Please fill all mandatory fields.'), backgroundColor: Colors.redAccent),
       );
       return;
     }
 
     if (!RegExp(r'^\d{10}$').hasMatch(receiverPhoneText)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid phone number.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid 10-digit phone number.'), backgroundColor: Colors.redAccent),
+      );
       return;
     }
 
     if (pincodeText.isNotEmpty && !RegExp(r'^\d{6}$').hasMatch(pincodeText)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 6-digit pincode.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid 6-digit pincode.'), backgroundColor: Colors.redAccent),
+      );
       return;
     }
 
@@ -56,21 +61,20 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
         'city': _city.text.trim(),
         'state': _state.text.trim(),
         'pincode': pincodeText,
-        // Latitude/Longitude intentionally omitted from customer-provided payload
       });
 
       ref.invalidate(addressesProvider);
       ref.read(selectedAddressProvider.notifier).state = address;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Address added successfully')),
+        SnackBar(content: const Text('Address added successfully'), backgroundColor: quickGoGreen),
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       final err = e.toString();
       final msg = err.contains('Network') ? 'Network error. Check your connection.' : 'Failed to add address. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -81,54 +85,64 @@ class _AddAddressScreenState extends ConsumerState<AddAddressScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Add Address')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         children: [
-          TextField(
+          QuickGoTextField(
             controller: _receiverName,
-            decoration: const InputDecoration(labelText: 'Receiver Name *'),
+            labelText: 'Receiver Name *',
+            hintText: 'Enter recipient name',
           ),
-          const SizedBox(height: 8),
-          TextField(
+          const SizedBox(height: 12),
+          QuickGoTextField(
             controller: _receiverPhone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'Receiver Phone *'),
+            labelText: 'Receiver Phone *',
+            hintText: 'Enter 10-digit number',
           ),
-          const SizedBox(height: 8),
-          TextField(
+          const SizedBox(height: 12),
+          QuickGoTextField(
             controller: _line1,
-            decoration: const InputDecoration(labelText: 'Address Line 1 *'),
+            labelText: 'Address Line 1 *',
+            hintText: 'Flat / House no, Building, Street',
           ),
-          const SizedBox(height: 8),
-          TextField(
+          const SizedBox(height: 12),
+          QuickGoTextField(
             controller: _line2,
-            decoration:
-                const InputDecoration(labelText: 'Address Line 2 (Optional)'),
+            labelText: 'Address Line 2 (Optional)',
+            hintText: 'Landmark, Locality',
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _city,
-            decoration: const InputDecoration(labelText: 'City *'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _state,
-            decoration: const InputDecoration(labelText: 'State *'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _pincode,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Pincode'),
-          ),
-          const SizedBox(height: 8),
-          // Latitude/Longitude removed from MVP customer UI
-          const SizedBox(height: 24),
-          _submitting
-              ? const Center(child: CircularProgressIndicator())
-              : FilledButton(
-                  onPressed: _saveAddress,
-                  child: const Text('Save Address'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: QuickGoTextField(
+                  controller: _city,
+                  labelText: 'City *',
+                  hintText: 'City name',
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: QuickGoTextField(
+                  controller: _state,
+                  labelText: 'State *',
+                  hintText: 'State name',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          QuickGoTextField(
+            controller: _pincode,
+            labelText: 'Pincode',
+            hintText: '6-digit pincode',
+          ),
+          const SizedBox(height: 28),
+          QuickGoButton(
+            onPressed: _saveAddress,
+            isLoading: _submitting,
+            label: 'Save Address',
+            icon: Icons.save_outlined,
+          ),
         ],
       ),
     );

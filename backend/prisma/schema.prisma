@@ -281,6 +281,8 @@ model Customer {
   addresses Address[]
   carts     Cart[]
   orders    Order[]
+  wallet    Wallet?
+  odysseyProfile OdysseyProfile?
 }
 
 model Address {
@@ -1163,7 +1165,7 @@ model AdminZoneAssignment {
   id                     String      @id @default(uuid())
   adminUserId            String
   serviceZoneId          String
-  status                 String      @default("ACTIVE") // ACTIVE, REVOKED
+  status                 String      @default("PENDING") // PENDING, APPROVED, REJECTED, SUSPENDED, ACTIVE, REVOKED
   assignedBySuperAdminId String
   assignedAt             DateTime    @default(now())
   revokedAt              DateTime?
@@ -1228,3 +1230,85 @@ model BankDetailVersion {
   @@index([vendorId])
   @@index([riderId])
 }
+
+model Wallet {
+  id              String              @id @default(uuid())
+  customerId      String              @unique
+  coinsBalance    Int                 @default(0)
+  cashbackBalance Decimal             @default(0.00) @db.Decimal(10, 2)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  customer        Customer            @relation(fields: [customerId], references: [id])
+  transactions    WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String    @id @default(uuid())
+  walletId    String
+  type        String    // e.g. GO_COINS_CREDIT, GO_COINS_DEBIT, GO_COINS_EXPIRED, CASHBACK_CREDIT, CASHBACK_DEBIT, CASHBACK_EXPIRED
+  amount      Decimal   @db.Decimal(10, 2)
+  currency    String    // e.g. COINS, CASHBACK
+  referenceId String?
+  orderId     String?
+  description String?
+  createdAt   DateTime  @default(now())
+  expiryAt    DateTime?
+  wallet      Wallet    @relation(fields: [walletId], references: [id])
+
+  @@index([walletId])
+}
+
+model Reward {
+  id          String        @id @default(uuid())
+  customerId  String
+  type        String        // e.g. INITIAL_REWARD, MILESTONE_REWARD
+  rewardType  String        // e.g. COINS, CASHBACK, DISCOUNT
+  rewardValue Decimal       @db.Decimal(10, 2)
+  status      String        // LOCKED, AVAILABLE, REVEAL_REQUIRED, REVEALED, CLAIMABLE, CLAIMED, EXPIRED
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  claimedAt   DateTime?
+  expiryAt    DateTime?
+  claims      RewardClaim[]
+
+  @@index([customerId])
+}
+
+model RewardClaim {
+  id          String   @id @default(uuid())
+  rewardId    String
+  customerId  String
+  amount      Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+  reward      Reward   @relation(fields: [rewardId], references: [id])
+
+  @@index([rewardId])
+}
+
+model OdysseyProfile {
+  id         String         @id @default(uuid())
+  customerId String         @unique
+  points     Int            @default(0)
+  level      Int            @default(1)
+  streak     Int            @default(0)
+  cycleCount Int            @default(0)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  customer   Customer       @relation(fields: [customerId], references: [id])
+  events     OdysseyEvent[]
+}
+
+model OdysseyEvent {
+  id           String         @id @default(uuid())
+  profileId    String
+  type         String         // e.g. ORDER_COMPLETED, ORDER_CANCELLED, MILESTONE_REACHED
+  pointsChange Int            @default(0)
+  referenceId  String?
+  createdAt    DateTime       @default(now())
+  profile      OdysseyProfile @relation(fields: [profileId], references: [id])
+
+  @@index([profileId])
+  @@index([referenceId])
+}
+

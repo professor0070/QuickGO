@@ -32,5 +32,8 @@ COPY --from=builder /usr/src/app/web/admin_panel/package*.json ./web/admin_panel
 COPY --from=builder /usr/src/app/web/admin_panel/.next ./web/admin_panel/.next
 COPY --from=builder /usr/src/app/web/admin_panel/public ./web/admin_panel/public
 
+# SECURITY: Run as non-root user
+USER node
+
 EXPOSE 3001
 CMD ["npm", "run", "start", "-w", "web/admin_panel"]

@@ -55,6 +55,7 @@ export class ServiceZonesService {
 
   adminList() {
     return this.prisma.serviceZone.findMany({
+      include: { pincodes: true },
       orderBy: [{ isActive: "desc" }, { city: "asc" }, { name: "asc" }]
     });
   }

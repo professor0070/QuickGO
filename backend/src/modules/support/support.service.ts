@@ -29,6 +29,7 @@ export class SupportService {
     return this.prisma.supportTicket.findMany({
       where: { createdBy: userId },
       orderBy: { createdAt: "desc" },
+      take: 50,
       include: { events: true }
     });
   }

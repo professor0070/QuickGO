@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Backend (NestJS) npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/web/admin_panel"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"

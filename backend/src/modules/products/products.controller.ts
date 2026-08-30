@@ -20,8 +20,21 @@ export class ProductsController {
 
   @Public()
   @Get("products")
-  products(@Query("vendor_id") vendorId?: string, @Query("category_id") categoryId?: string) {
-    return this.catalog.listProducts({ vendorId, categoryId });
+  products(
+    @Query("vendor_id") vendorId?: string,
+    @Query("category_id") categoryId?: string,
+    @Query("search") search?: string,
+    @Query("limit") limit?: string,
+    @Query("cursor") cursor?: string,
+  ) {
+    const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+    return this.catalog.listProducts({
+      vendorId,
+      categoryId,
+      search,
+      limit: parsedLimit,
+      cursor,
+    });
   }
 }
 

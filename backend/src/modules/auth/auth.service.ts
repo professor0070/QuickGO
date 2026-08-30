@@ -1,4 +1,5 @@
 import { Inject, Injectable, UnauthorizedException, BadRequestException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../common/prisma.service";
 import { DomainEventBus } from "../internal-events/domain-event-bus.service";
@@ -10,12 +11,12 @@ export class AuthService {
   constructor(
     @Inject("OTP_PROVIDER") private readonly otpProvider: OtpProvider,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly eventBus: DomainEventBus
   ) {}
 
   async sendOtp(phone: string) {
-    console.log(`[DEBUG] sendOtp request received for phone: ${phone}`);
     const normalized = normalizeIndianPhone(phone);
     await this.otpProvider.send(normalized, "LOGIN");
     await this.eventBus.publish(
@@ -26,7 +27,24 @@ export class AuthService {
     return { message: "OTP sent if phone is valid.", data: null };
   }
 
-  async verifyOtp(phone: string, otp: string, appContext: string) {
+  async verifyOtp(phoneOrDto: any, otpStr?: string, appContextStr?: string, adminModeStr?: string) {
+    let phone: string;
+    let otp: string;
+    let appContext: string;
+    let adminMode: string | undefined;
+
+    if (typeof phoneOrDto === "object" && phoneOrDto !== null) {
+      phone = phoneOrDto.phone;
+      otp = phoneOrDto.otp;
+      appContext = phoneOrDto.appContext;
+      adminMode = phoneOrDto.adminMode || phoneOrDto.mode;
+    } else {
+      phone = phoneOrDto;
+      otp = otpStr!;
+      appContext = appContextStr!;
+      adminMode = adminModeStr;
+    }
+
     if (!appContext) {
       throw new BadRequestException("appContext is required");
     }
@@ -87,7 +105,7 @@ export class AuthService {
     if (!user) throw new Error("User resolution failed after verifyOtp");
     const finalUser: any = user;
     const roles = finalUser.roles.map((item: any) => item.role.code);
-
+    
     // Validate role eligibility based on requested appContext
     if (appContext === "PARTNER") {
       const hasPartnerRole = roles.some((r: string) => r === "RIDER" || r === "VENDOR_OWNER" || r === "VENDOR_STAFF");
@@ -95,9 +113,40 @@ export class AuthService {
         throw new UnauthorizedException("Access denied: missing partner roles");
       }
     } else if (appContext === "ADMIN") {
-      const hasAdminRole = roles.some((r: string) => r === "ADMIN" || r === "SUPER_ADMIN" || r === "ZONE_ADMIN");
+      const hasAdminRole = roles.some((r: string) => r === "SUPER_ADMIN" || r === "ZONE_ADMIN");
       if (!hasAdminRole) {
         throw new UnauthorizedException("Access denied: missing admin roles");
+      }
+
+      const requestedMode = adminMode;
+      if (requestedMode === "SUPER_ADMIN" && !roles.includes("SUPER_ADMIN")) {
+        throw new UnauthorizedException("Access denied: account does not hold SUPER_ADMIN privileges");
+      }
+      if (requestedMode === "ZONE_ADMIN") {
+        if (!roles.includes("ZONE_ADMIN") && !roles.includes("SUPER_ADMIN")) {
+          throw new UnauthorizedException("Access denied: account does not hold ZONE_ADMIN privileges");
+        }
+        if (roles.includes("ZONE_ADMIN") && !roles.includes("SUPER_ADMIN")) {
+          const assignment = await this.prisma.adminZoneAssignment.findFirst({
+            where: {
+              adminUserId: finalUser.id,
+              status: { in: ["ACTIVE", "APPROVED", "PENDING", "REJECTED", "SUSPENDED"] },
+              revokedAt: null
+            },
+            orderBy: { assignedAt: "desc" }
+          });
+          if (assignment) {
+            if (assignment.status === "PENDING") {
+              throw new UnauthorizedException("Access denied: Zone Admin account is pending approval by Super Admin");
+            }
+            if (assignment.status === "REJECTED") {
+              throw new UnauthorizedException("Access denied: Zone Admin account approval was rejected");
+            }
+            if (assignment.status === "SUSPENDED") {
+              throw new UnauthorizedException("Access denied: Zone Admin account has been suspended");
+            }
+          }
+        }
       }
     }
 
@@ -116,7 +165,10 @@ export class AuthService {
     return {
       data: {
         access_token: await this.jwt.signAsync(payload),
-        refresh_token: await this.jwt.signAsync(payload, { expiresIn: "30d" }),
+        refresh_token: await this.jwt.signAsync(payload, {
+          secret: this.config.getOrThrow<string>("JWT_REFRESH_SECRET"),
+          expiresIn: "50d"
+        }),
         user: {
           id: finalUser.id,
           phone: finalUser.phone,

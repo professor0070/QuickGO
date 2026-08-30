@@ -1,0 +1,53 @@
+{
+  "gate": "Gate 5",
+  "name": "Authenticated Role Authorization and Cross-Role Isolation Test",
+  "timestamp": "2026-07-15T03:50:00Z",
+  "status": "PASS",
+  "config": {
+    "scenarios": {
+      "isolation_check": {
+        "vus": 1,
+        "iterations": 5
+      }
+    }
+  },
+  "results": {
+    "total_checks": 112,
+    "checks_succeeded": 112,
+    "checks_failed": 0,
+    "success_rate": 1.0,
+    "matrix_validations": {
+      "anonymous": {
+        "customer_profile": 401,
+        "vendor_dashboard": 401,
+        "rider_dashboard": 401,
+        "admin_dashboard": 401
+      },
+      "customer": {
+        "customer_profile": 200,
+        "vendor_dashboard": 403,
+        "rider_dashboard": 403,
+        "admin_dashboard": 403
+      },
+      "vendor": {
+        "customer_profile": 200,
+        "vendor_dashboard": 200,
+        "rider_dashboard": 403,
+        "admin_dashboard": 403
+      },
+      "rider": {
+        "customer_profile": 200,
+        "vendor_dashboard": 403,
+        "rider_dashboard": 200,
+        "admin_dashboard": 403
+      },
+      "admin": {
+        "customer_profile": 403,
+        "vendor_dashboard": 403,
+        "rider_dashboard": 403,
+        "admin_dashboard": 200
+      }
+    }
+  },
+  "verdict": "PASS"
+}

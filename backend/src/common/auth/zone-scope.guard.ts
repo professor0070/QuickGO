@@ -15,17 +15,21 @@ export class ZoneScopeGuard implements CanActivate {
       return true;
     }
 
-    // Only ZONE_ADMIN and ADMIN roles are subject to zone scoping
-    if (!user.roles.includes("ZONE_ADMIN") && !user.roles.includes("ADMIN")) {
+    // Only ZONE_ADMIN role is subject to zone scoping
+    if (!user.roles.includes("ZONE_ADMIN")) {
       return true;
     }
 
-    // Query active database assignments (stale JWT prevention)
+    // Query active & approved database assignments with active service zone check
     const assignments = await this.prisma.adminZoneAssignment.findMany({
       where: {
         adminUserId: user.id,
-        status: "ACTIVE",
-        revokedAt: null
+        status: { in: ["ACTIVE", "APPROVED"] },
+        revokedAt: null,
+        serviceZone: {
+          isActive: true,
+          status: "ACTIVE"
+        }
       },
       select: { serviceZoneId: true }
     });
@@ -33,7 +37,7 @@ export class ZoneScopeGuard implements CanActivate {
     const activeZoneIds = assignments.map((a: any) => a.serviceZoneId);
 
     if (activeZoneIds.length === 0) {
-      throw new ForbiddenException("Access denied: You have no active zone assignments");
+      throw new ForbiddenException("Access denied: You have no active/approved zone assignments or your assigned zone is non-operational");
     }
 
     // Attach active zone IDs list to the request object for downstream controllers/services
@@ -100,6 +104,10 @@ export class ZoneScopeGuard implements CanActivate {
     if (zoneId) {
       if (!activeZoneIds.includes(zoneId)) {
         throw new ForbiddenException("Access denied: Zone is outside your assigned zones");
+      }
+      const zone = await this.prisma.serviceZone.findUnique({ where: { id: zoneId } });
+      if (!zone || !zone.isActive || zone.status !== "ACTIVE") {
+        throw new ForbiddenException("Access denied: Assigned zone is non-operational");
       }
     }
 

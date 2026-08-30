@@ -125,3 +125,12 @@ Implemented Phase 10 work:
 - **Validation:** Successfully executed the monorepo checks (`npm run check`), NestJS backend unit and E2E integration test suites, Next.js lint audits, and Flutter/Dart static analysis & widget tests.
 
 
+## Login Flow Recovery Audit
+
+Audit completed on 2026-07-18.
+
+- **Issue:** Customer App login failure after laptop shutdown
+- **Root cause:** NestJS backend was offline (the dev server process had terminated)
+- **Resolution:** Backend restarted and development-safe error logging (debugPrint exception details) added to login screen request and verification catch blocks in `login_screen.dart`.
+- **Runtime verification:** Entered phone number, checked terms, requested OTP, entered mock OTP code `123456`, verified, and transitioned to the Home Screen. Notification permissions accepted.
+- **Status:** CLOSED

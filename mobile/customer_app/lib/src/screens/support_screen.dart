@@ -39,17 +39,13 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
 
     final content = RefreshIndicator(
       onRefresh: () async => ref.invalidate(supportTicketsProvider),
+      color: quickGoGreen,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         children: [
           // Header Help Banner
           Card(
             clipBehavior: Clip.antiAlias,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: quickGoLine),
-            ),
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -97,31 +93,25 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           const Text(
             'Your Tickets',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: quickGoTextDark,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           ticketsAsync.when(
             data: (tickets) {
               if (tickets.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.support_agent, size: 48, color: Colors.grey.shade400),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No support tickets found',
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                      ),
-                    ],
+                return const SizedBox(
+                  height: 200,
+                  child: QuickGoEmptyState(
+                    title: 'No Tickets Found',
+                    message: 'Any support issues you create will appear here.',
+                    icon: Icons.support_agent_outlined,
                   ),
                 );
               }
@@ -136,78 +126,74 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                       ? createdAtStr.substring(0, 10)
                       : 'Recently';
 
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: quickGoLine),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(12),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(status).withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _getStatusIcon(status),
+                          color: _getStatusColor(status),
+                          size: 20,
+                        ),
+                      ),
+                      title: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              subject,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: quickGoTextDark,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _StatusBadge(status: status),
+                        ],
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 6),
+                          Text(
+                            description,
+                            style: const TextStyle(
+                              color: quickGoTextLight,
+                              fontSize: 13,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Submitted: $dateText',
+                            style: const TextStyle(
+                              color: quickGoTextLight,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                      trailing: const Icon(Icons.chevron_right, color: quickGoTextLight),
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (c) => SupportTicketDetailScreen(ticketId: id),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: _getStatusColor(status).withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                _getStatusIcon(status),
-                                color: _getStatusColor(status),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          subject,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _StatusBadge(status: status),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    description,
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 13,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Submitted: $dateText',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ),
@@ -215,18 +201,39 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                 }).toList(),
               );
             },
-            loading: () => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24.0),
-                child: CircularProgressIndicator(),
+            loading: () => Column(
+              children: List.generate(
+                3,
+                (index) => Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: quickGoLine),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    children: [
+                      QuickGoSkeleton(width: 40, height: 40, borderRadius: 20),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            QuickGoSkeleton(width: 120, height: 16),
+                            SizedBox(height: 8),
+                            QuickGoSkeleton(width: 200, height: 12),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            error: (err, _) => Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Failed to load tickets: $err',
-                style: const TextStyle(color: Colors.redAccent),
-              ),
+            error: (err, _) => QuickGoErrorState(
+              title: 'Failed to load tickets',
+              message: err.toString(),
+              onRetry: () => ref.invalidate(supportTicketsProvider),
             ),
           ),
         ],
@@ -277,13 +284,13 @@ class _CreateTicketBottomSheetState extends ConsumerState<_CreateTicketBottomShe
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Support ticket created successfully')),
+          SnackBar(content: const Text('Support ticket created successfully'), backgroundColor: quickGoGreen),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create ticket: $e')),
+          SnackBar(content: Text('Failed to create ticket: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -314,7 +321,7 @@ class _CreateTicketBottomSheetState extends ConsumerState<_CreateTicketBottomShe
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: quickGoTextDark,
                   ),
                 ),
                 IconButton(
@@ -323,44 +330,26 @@ class _CreateTicketBottomSheetState extends ConsumerState<_CreateTicketBottomShe
                 ),
               ],
             ),
-            const Divider(),
+            const Divider(color: quickGoLine),
             const SizedBox(height: 12),
-            TextField(
+            QuickGoTextField(
               controller: _subject,
-              decoration: const InputDecoration(
-                labelText: 'Subject',
-                hintText: 'Brief summary (e.g. Payment Issue, App Bug)',
-                border: OutlineInputBorder(),
-              ),
+              labelText: 'Subject',
+              hintText: 'Brief summary (e.g. Payment Issue, App Bug)',
             ),
             const SizedBox(height: 16),
-            TextField(
+            QuickGoTextField(
               controller: _description,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Details / Description',
-                hintText: 'Provide detailed information about the issue...',
-                border: OutlineInputBorder(),
-              ),
+              labelText: 'Details / Description',
+              hintText: 'Provide detailed information about the issue...',
             ),
             const SizedBox(height: 20),
-            if (_submitting)
-              const Center(child: CircularProgressIndicator())
-            else
-              FilledButton(
-                onPressed: _submitTicket,
-                style: FilledButton.styleFrom(
-                  backgroundColor: quickGoGreen,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Submit Ticket',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-              ),
+            QuickGoButton(
+              onPressed: _submitTicket,
+              isLoading: _submitting,
+              label: 'Submit Ticket',
+              icon: Icons.send,
+            ),
           ],
         ),
       ),
@@ -397,46 +386,50 @@ class SupportTicketDetailScreen extends ConsumerWidget {
           final events = (ticket['events'] as List<dynamic>?) ?? [];
 
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             children: [
               // Info Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _StatusBadge(status: status),
-                          Chip(
-                            label: Text(
-                              'Priority: $priority',
-                              style: const TextStyle(fontSize: 11),
-                            ),
+              QuickGoCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _StatusBadge(status: status),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: quickGoSurface,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: quickGoLine),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        subject,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                          child: Text(
+                            'Priority: $priority',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: quickGoTextLight),
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      subject,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: quickGoTextDark,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        description,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                          height: 1.4,
-                        ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: quickGoTextLight,
+                        height: 1.4,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -446,7 +439,7 @@ class SupportTicketDetailScreen extends ConsumerWidget {
                 Card(
                   color: Colors.indigo.shade50,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     side: BorderSide(color: Colors.indigo.shade100),
                   ),
                   child: Padding(
@@ -490,11 +483,12 @@ class SupportTicketDetailScreen extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
+                  color: quickGoTextDark,
                 ),
               ),
               const SizedBox(height: 12),
               if (events.isEmpty)
-                const Text('No activity logged.')
+                const Text('No activity logged.', style: TextStyle(color: quickGoTextLight))
               else
                 ListView.builder(
                   shrinkWrap: true,
@@ -513,13 +507,12 @@ class SupportTicketDetailScreen extends ConsumerWidget {
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Left timeline line & dot
                         Column(
                           children: [
                             Container(
                               width: 2,
                               height: 16,
-                              color: isFirst ? Colors.transparent : Colors.grey.shade300,
+                              color: isFirst ? Colors.transparent : quickGoLine,
                             ),
                             Container(
                               width: 10,
@@ -532,12 +525,11 @@ class SupportTicketDetailScreen extends ConsumerWidget {
                             Container(
                               width: 2,
                               height: 24,
-                              color: isLast ? Colors.transparent : Colors.grey.shade300,
+                              color: isLast ? Colors.transparent : quickGoLine,
                             ),
                           ],
                         ),
                         const SizedBox(width: 16),
-                        // Right details content
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.only(top: 8.0),
@@ -549,15 +541,16 @@ class SupportTicketDetailScreen extends ConsumerWidget {
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
+                                    color: quickGoTextDark,
                                   ),
                                 ),
                                 if (formattedTime.isNotEmpty) ...[
                                   const SizedBox(height: 4),
                                   Text(
                                     formattedTime,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 11,
-                                      color: Colors.grey.shade500,
+                                      color: quickGoTextLight,
                                     ),
                                   ),
                                 ],
@@ -572,9 +565,11 @@ class SupportTicketDetailScreen extends ConsumerWidget {
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(
-          child: Text('Error: $err', style: const TextStyle(color: Colors.redAccent)),
+        loading: () => const Center(child: CircularProgressIndicator(color: quickGoGreen)),
+        error: (err, _) => QuickGoErrorState(
+          title: 'Failed to load details',
+          message: err.toString(),
+          onRetry: () => ref.invalidate(ticketDetailProvider(ticketId)),
         ),
       ),
     );

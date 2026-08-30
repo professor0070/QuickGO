@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { IsNotEmpty, IsOptional, IsString } from "class-validator";
 import { CurrentUser, RequestUser } from "../../common/auth/current-user.decorator";
+import { Public } from "../../common/auth/public.decorator";
 import { NotificationsService } from "./notifications.service";
 
 export class RegisterDeviceDto {
@@ -42,5 +43,29 @@ export class NotificationsController {
     @Body() body: RegisterDeviceDto
   ) {
     return this.notifications.registerDevice(user.id, body, user.roles);
+  }
+
+  @Public()
+  @Post("send-mock")
+  sendMock(
+    @Body("title") title?: string,
+    @Body("body") body?: string
+  ) {
+    return this.notifications.sendMockNotification(
+      title ?? "QuickGO Mock Test",
+      body ?? "This is a mock push notification test from your local laptop server!"
+    );
+  }
+
+  @Public()
+  @Post("send-vendor-mock")
+  sendVendorMock(
+    @Body("orderNumber") orderNumber?: string,
+    @Body("vendorId") vendorId?: string
+  ) {
+    return this.notifications.sendVendorOrderNotification(
+      orderNumber ?? "QG-10029",
+      vendorId
+    );
   }
 }

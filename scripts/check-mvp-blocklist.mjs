@@ -9,7 +9,8 @@ const ignoredDirs = new Set([
   "dist",
   "build",
   "coverage",
-  ".dart_tool"
+  ".dart_tool",
+  "brain"
 ]);
 
 const allowedDocs = new Set(["PRD.md"]);

@@ -1,8 +1,7 @@
 import { Module } from "@nestjs/common";
-import { AppVersionsController } from "./app-versions.controller";
+import { AppVersionsController, RootApiController } from "./app-versions.controller";
 
 @Module({
-  controllers: [AppVersionsController]
+  controllers: [RootApiController, AppVersionsController]
 })
 export class AppVersionsModule {}
-

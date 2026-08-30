@@ -17,7 +17,14 @@ export function verifyRazorpaySignature(
     .createHmac("sha256", secret)
     .update(`${orderId}|${paymentId}`)
     .digest("hex");
-  return generatedSignature === signature;
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(generatedSignature, "hex"),
+      Buffer.from(signature, "hex")
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -36,7 +43,14 @@ export function verifyRazorpayWebhookSignature(
     .createHmac("sha256", secret)
     .update(rawBody)
     .digest("hex");
-  return generatedSignature === signature;
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(generatedSignature, "hex"),
+      Buffer.from(signature, "hex")
+    );
+  } catch {
+    return false;
+  }
 }
 
 const ALGORITHM = "aes-256-gcm";
@@ -60,7 +74,7 @@ export function encryptAtRest(text: string, hexKey: string | undefined): string 
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
   const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
-
+  
   return `v1:${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
@@ -95,18 +109,19 @@ export function decryptAtRest(cipherText: string, hexKey: string | undefined): s
   } else {
     throw new Error("DECRYPTION_FAILED: Invalid ciphertext format.");
   }
-
+  
   try {
     const iv = Buffer.from(ivHex, "hex");
     const tag = Buffer.from(tagHex, "hex");
     const encrypted = Buffer.from(encHex, "hex");
     const key = Buffer.from(hexKey, "hex");
-
+    
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(tag);
-
+    
     return decipher.update(encrypted) + decipher.final("utf8");
   } catch (error: any) {
     throw new Error(`DECRYPTION_FAILED: ${error.message}`);
   }
 }
+

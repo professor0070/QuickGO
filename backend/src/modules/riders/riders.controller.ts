@@ -13,7 +13,8 @@ import {
   RejectAssignedOrderDto,
   SubmitDeliveryProofDto,
   ToggleRiderOnlineDto,
-  UpdateRiderProfileDto
+  UpdateRiderProfileDto,
+  SubmitBankDetailsDto
 } from "./rider.dto";
 import { RidersService } from "./riders.service";
 
@@ -217,6 +218,17 @@ export class RidersController {
     return {
       data: ticket,
       message: "Issue reported"
+    };
+  }
+
+  @Post("bank-details")
+  async updateBankDetails(
+    @CurrentUser() user: RequestUser,
+    @Body() body: SubmitBankDetailsDto
+  ) {
+    return {
+      data: await this.ridersService.updateBankDetails(user.id, body),
+      message: "Bank details submitted successfully"
     };
   }
 }

@@ -13,13 +13,13 @@ describe("crypto.util", () => {
       const orderId = "order_123";
       const paymentId = "pay_123";
       const secret = "secret_key";
-
+      
       const crypto = require("crypto");
       const signature = crypto
         .createHmac("sha256", secret)
         .update(`${orderId}|${paymentId}`)
         .digest("hex");
-
+        
       expect(verifyRazorpaySignature(orderId, paymentId, signature, secret)).toBe(true);
     });
   });
@@ -32,11 +32,11 @@ describe("crypto.util", () => {
     it("should encrypt and decrypt correctly with a valid key", () => {
       const plaintext = "my-secret-bank-account-number";
       const ciphertext = encryptAtRest(plaintext, validHexKey);
-
+      
       expect(ciphertext).toBeDefined();
       expect(ciphertext.startsWith("v1:")).toBe(true);
       expect(ciphertext.split(":").length).toBe(4); // v1:iv:tag:encrypted
-
+      
       const decrypted = decryptAtRest(ciphertext, validHexKey);
       expect(decrypted).toBe(plaintext);
     });
@@ -46,7 +46,7 @@ describe("crypto.util", () => {
       const plaintext = "identical-plaintext";
       const cipher1 = encryptAtRest(plaintext, validHexKey);
       const cipher2 = encryptAtRest(plaintext, validHexKey);
-
+      
       expect(cipher1).not.toBe(cipher2);
     });
 
@@ -55,12 +55,12 @@ describe("crypto.util", () => {
       const plaintext = "sensitive-information";
       const ciphertext = encryptAtRest(plaintext, validHexKey);
       const parts = ciphertext.split(":");
-
+      
       // Corrupt the encrypted hex string by replacing the last character
       const encHex = parts[3];
       const corruptedEncHex = encHex.slice(0, -1) + (encHex.endsWith("0") ? "1" : "0");
       const corruptedCiphertext = `${parts[0]}:${parts[1]}:${parts[2]}:${corruptedEncHex}`;
-
+      
       expect(() => decryptAtRest(corruptedCiphertext, validHexKey)).toThrow();
     });
 
@@ -69,12 +69,12 @@ describe("crypto.util", () => {
       const plaintext = "sensitive-information";
       const ciphertext = encryptAtRest(plaintext, validHexKey);
       const parts = ciphertext.split(":");
-
+      
       // Corrupt the tag segment
       const tagHex = parts[2];
       const corruptedTagHex = tagHex.slice(0, -1) + (tagHex.endsWith("0") ? "1" : "0");
       const corruptedCiphertext = `${parts[0]}:${parts[1]}:${corruptedTagHex}:${parts[3]}`;
-
+      
       expect(() => decryptAtRest(corruptedCiphertext, validHexKey)).toThrow();
     });
 
@@ -82,7 +82,7 @@ describe("crypto.util", () => {
     it("should fail decryption if a different valid 32-byte key is used", () => {
       const plaintext = "sensitive-information";
       const ciphertext = encryptAtRest(plaintext, validHexKey);
-
+      
       expect(() => decryptAtRest(ciphertext, otherHexKey)).toThrow();
     });
 
@@ -139,7 +139,7 @@ describe("crypto.util", () => {
     // 13. Decrypting legacy v0 fallback
     it("should support decrypting legacy (v0) non-prefixed format for backward compatibility", () => {
       const plaintext = "legacy-data";
-
+      
       // Construct a legacy ciphertext manually (without v1:)
       const crypto = require("crypto");
       const key = Buffer.from(validHexKey, "hex");
@@ -148,7 +148,7 @@ describe("crypto.util", () => {
       const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
       const tag = cipher.getAuthTag();
       const legacyCiphertext = `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
-
+      
       const decrypted = decryptAtRest(legacyCiphertext, validHexKey);
       expect(decrypted).toBe(plaintext);
     });

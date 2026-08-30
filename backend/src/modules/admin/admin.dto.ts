@@ -313,3 +313,53 @@ export class AssignRoleDto {
   role!: string;
 }
 
+export class AddPincodeDto {
+  @IsString()
+  @Matches(/^\d{6}$/)
+  pincode!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_primary?: boolean;
+}
+
+export class CreateZoneAdminDto {
+  @IsString()
+  @Matches(/^\+91[6-9]\d{9}$/)
+  phone!: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+}
+
+export class AssignZoneAdminDto {
+  @IsString()
+  admin_user_id!: string;
+
+  @IsString()
+  service_zone_id!: string;
+}
+
+export class PartnerSuspensionDto {
+  @IsBoolean()
+  status!: boolean;
+
+  @IsString()
+  reason!: string;
+}
+
+export class ReviewBankDetailsDto {
+  @IsString()
+  @IsIn(["APPROVED", "REJECTED"])
+  status!: "APPROVED" | "REJECTED";
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+

@@ -80,6 +80,21 @@ export class FcmProvider implements OnModuleInit {
           title,
           body,
         },
+        android: {
+          priority: "high",
+          notification: {
+            sound: "default",
+            clickAction: "FLUTTER_NOTIFICATION_CLICK",
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1,
+            },
+          },
+        },
         data: data ? this.sanitizeData(data) : undefined,
       };
 

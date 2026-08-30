@@ -3,7 +3,7 @@ import { Roles } from "../../common/auth/roles.decorator";
 import { ReportsService } from "./reports.service";
 
 @Controller("admin/reports")
-@Roles("ADMIN", "SUPER_ADMIN")
+@Roles("SUPER_ADMIN", "ZONE_ADMIN")
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 

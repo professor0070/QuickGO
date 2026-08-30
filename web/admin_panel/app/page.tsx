@@ -96,6 +96,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   // Auth states
+  const [adminLoginMode, setAdminLoginMode] = useState<"SUPER_ADMIN" | "ZONE_ADMIN">("SUPER_ADMIN");
   const [loginPhone, setLoginPhone] = useState("");
   const [loginOtp, setLoginOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -117,6 +118,27 @@ export default function AdminDashboard() {
   const [reconciliationSummary, setReconciliationSummary] = useState<any>(null);
   const [allPayments, setAllPayments] = useState<any[]>([]);
   const [payoutFilter, setPayoutFilter] = useState<string>("ALL");
+
+  // Zone Assignments & Custom Operations states
+  const [zoneAssignments, setZoneAssignments] = useState<any[]>([]);
+  const [showAssignZoneModal, setShowAssignZoneModal] = useState(false);
+  const [assignZoneAdminId, setAssignZoneAdminId] = useState("");
+  const [assignZoneId, setAssignZoneId] = useState("");
+  const [showPincodeModal, setShowPincodeModal] = useState<string | null>(null);
+  const [newPincode, setNewPincode] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [suspensionReason, setSuspensionReason] = useState("");
+  const [showSuspensionModal, setShowSuspensionModal] = useState<{ type: "vendor" | "rider"; id: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const resolveImageUrl = (path: string | null) => {
+    if (!path) return "";
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      return path;
+    }
+    const base = apiUrl.replace("/api/v1", "");
+    return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
+  };
 
   // Action / Form states
   const [showVendorModal, setShowVendorModal] = useState(false);
@@ -220,7 +242,7 @@ export default function AdminDashboard() {
         .then(res => res.json())
         .then(data => {
           const profile = data?.data ?? data;
-          if (profile && profile.roles && (profile.roles.includes("ADMIN") || profile.roles.includes("SUPER_ADMIN"))) {
+          if (profile && profile.roles && (profile.roles.includes("ADMIN") || profile.roles.includes("SUPER_ADMIN") || profile.roles.includes("ZONE_ADMIN"))) {
             setUserProfile(profile);
           } else {
             localStorage.removeItem("quickgo_auth_token");
@@ -267,14 +289,17 @@ export default function AdminDashboard() {
       const res = await fetch(`${apiUrl}/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: normalizedPhone, otp: loginOtp })
+        body: JSON.stringify({ phone: normalizedPhone, otp: loginOtp, appContext: "ADMIN", adminMode: adminLoginMode })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Verification failed");
       
       const { access_token, user } = json.data;
-      if (!user.roles.includes("ADMIN") && !user.roles.includes("SUPER_ADMIN")) {
-        throw new Error("Access denied. Admin permissions required.");
+      if (adminLoginMode === "SUPER_ADMIN" && !user.roles.includes("SUPER_ADMIN")) {
+        throw new Error("Access denied. Account does not have SUPER_ADMIN privileges.");
+      }
+      if (adminLoginMode === "ZONE_ADMIN" && !user.roles.includes("ZONE_ADMIN") && !user.roles.includes("SUPER_ADMIN")) {
+        throw new Error("Access denied. Account does not have ZONE_ADMIN privileges.");
       }
       
       localStorage.setItem("quickgo_auth_token", access_token);
@@ -398,8 +423,14 @@ export default function AdminDashboard() {
         setReport(r || null);
       } else if (activeTab === "Role Management") {
         const query = roleSearchPhone ? `?phone=${encodeURIComponent(roleSearchPhone)}` : "";
-        const u = await fetchWithAuth(`/admin/users${query}`);
+        const [u, sz, assignments] = await Promise.all([
+          fetchWithAuth(`/admin/users${query}`),
+          fetchWithAuth("/admin/service-zones"),
+          userProfile?.roles?.includes("SUPER_ADMIN") ? fetchWithAuth("/admin/zone-assignments") : Promise.resolve([])
+        ]);
         setRoleUsers(u || []);
+        setServiceZones(sz || []);
+        setZoneAssignments(assignments || []);
       }
     } catch (err: any) {
       setError(err.message || "Failed to fetch data from API");
@@ -560,6 +591,48 @@ export default function AdminDashboard() {
       loadData();
     } catch (err: any) {
       alert("Error reviewing document: " + err.message);
+    }
+  };
+
+  const handleReviewComplianceWithExplicitReason = async (docId: string, status: string, fssaiStatus?: string, reason?: string) => {
+    const finalReason = reason || "Approved by admin";
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/vendor-compliance-documents/${docId}/review`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, fssai_status: fssaiStatus, reason: finalReason })
+      });
+      alert("Compliance document status updated");
+      setRejectionReason("");
+      if (showComplianceModal) {
+        loadVendorCompliance(showComplianceModal);
+      }
+      loadData();
+    } catch (err: any) {
+      alert("Error reviewing document: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReviewRiderKycWithExplicitReason = async (docId: string, status: string, reason?: string) => {
+    const finalReason = reason || "Approved by admin";
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/rider-kyc-documents/${docId}/review`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, reason: finalReason })
+      });
+      alert("KYC document status updated");
+      setRejectionReason("");
+      if (showRiderKycModal) {
+        loadRiderKyc(showRiderKycModal);
+      }
+      loadData();
+    } catch (err: any) {
+      alert("Error reviewing KYC document: " + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -821,6 +894,125 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAddPincode = async (zoneId: string, pincode: string) => {
+    if (!pincode || !/^\d{6}$/.test(pincode)) {
+      alert("Please enter a valid 6-digit pincode");
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/service-zones/${zoneId}/pincodes`, {
+        method: "POST",
+        body: JSON.stringify({ pincode, is_primary: true })
+      });
+      alert("Pincode added successfully");
+      setNewPincode("");
+      setShowPincodeModal(null);
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemovePincode = async (zoneId: string, pincode: string) => {
+    if (!confirm(`Are you sure you want to remove pincode ${pincode} from this zone?`)) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/service-zones/${zoneId}/pincodes/${pincode}`, {
+        method: "DELETE"
+      });
+      alert("Pincode removed successfully");
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAssignZoneAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignZoneAdminId || !assignZoneId) {
+      alert("Please select both user and service zone");
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth("/admin/zone-assignments", {
+        method: "POST",
+        body: JSON.stringify({ admin_user_id: assignZoneAdminId, service_zone_id: assignZoneId })
+      });
+      alert("Admin assigned to zone successfully");
+      setShowAssignZoneModal(false);
+      setAssignZoneAdminId("");
+      setAssignZoneId("");
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRevokeZoneAssignment = async (assignmentId: string) => {
+    if (!confirm("Are you sure you want to revoke this zone assignment?")) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/zone-assignments/${assignmentId}`, {
+        method: "DELETE"
+      });
+      alert("Zone assignment revoked successfully");
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleSuspension = async (type: "vendor" | "rider", id: string, currentSuspended: boolean) => {
+    const actionStr = currentSuspended ? "reinstate" : "suspend";
+    const reason = requireReason(`confirm ${actionStr} partner account`);
+    if (!reason) return;
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/${type}s/${id}/suspension`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: !currentSuspended, reason })
+      });
+      alert(`Partner ${actionStr}ed successfully`);
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOffboard = async (type: "vendor" | "rider", id: string) => {
+    if (!confirm(`Are you absolutely sure you want to OFFBOARD and TERMINATE the agreement for this ${type}? This action is permanent.`)) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetchWithAuth(`/admin/${type}s/${id}/offboard`, {
+        method: "POST"
+      });
+      alert(`Partner offboarded successfully`);
+      loadData();
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const paymentAttentionStatuses = new Set([
     "PENDING",
     "PENDING_COLLECTION",
@@ -839,27 +1031,57 @@ export default function AdminDashboard() {
 
   if (!authToken || !userProfile) {
     return (
-      <main className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center font-sans p-6 animate-fade-in">
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl p-8">
+      <main className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center font-sans p-6 animate-fade-in relative">
+        <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full shadow-xl p-8 sm:p-10 relative overflow-hidden transition-all duration-300 hover:shadow-2xl">
+          {/* Decorative premium accent top border */}
+          <div className="absolute top-0 left-0 right-0 h-[4px] bg-indigo-600" />
+
           <div className="text-center mb-8">
-            <span className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">QuickGO</span>
-            <span className="ml-2 rounded bg-indigo-900 px-2.5 py-0.5 text-xs font-semibold text-indigo-300">Admin Portal</span>
-            <p className="mt-2 text-sm text-slate-400">Sign in with phone number & OTP verification</p>
+            <span className="text-4xl font-black tracking-tight text-indigo-600">QuickGO</span>
+            <span className="ml-2 inline-flex items-center rounded-full bg-indigo-50 border border-indigo-150 px-3 py-1 text-[11px] font-bold text-indigo-700 uppercase tracking-wider">
+              Admin Portal
+            </span>
+            <p className="mt-3 text-sm text-slate-500 font-medium">Sign in with phone number & OTP verification</p>
           </div>
 
           {error && (
-            <div className="mb-6 rounded-md bg-red-950 border border-red-800 p-4 text-sm text-red-200">
+            <div className="mb-6 rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-800 animate-fade-in">
               <strong>Error:</strong> {error}
             </div>
           )}
 
           {!otpSent ? (
-            <form onSubmit={handleSendOtp} className="space-y-4">
+            <form onSubmit={handleSendOtp} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-300">Admin Phone Number</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Select Admin Account Type</label>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setAdminLoginMode("SUPER_ADMIN")}
+                    className={`p-3.5 rounded-xl border text-center font-bold text-xs transition-all ${
+                      adminLoginMode === "SUPER_ADMIN"
+                        ? "border-indigo-600 bg-indigo-50/50 text-indigo-700 ring-2 ring-indigo-600/20"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {adminLoginMode === "SUPER_ADMIN" ? "☑ SUPER ADMIN" : "☐ SUPER ADMIN"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminLoginMode("ZONE_ADMIN")}
+                    className={`p-3.5 rounded-xl border text-center font-bold text-xs transition-all ${
+                      adminLoginMode === "ZONE_ADMIN"
+                        ? "border-indigo-600 bg-indigo-50/50 text-indigo-700 ring-2 ring-indigo-600/20"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {adminLoginMode === "ZONE_ADMIN" ? "☑ ZONE ADMIN" : "☐ ZONE ADMIN"}
+                  </button>
+                </div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-650 mb-2">Admin Phone Number</label>
                 <input
                   type="tel"
-                  placeholder="+919999999999"
+                  placeholder="phone number"
                   value={loginPhone}
                   onChange={(e) => setLoginPhone(e.target.value)}
                   onBlur={() => {
@@ -867,44 +1089,44 @@ export default function AdminDashboard() {
                       setLoginPhone(normalizePhone(loginPhone));
                     }
                   }}
-                  className="mt-1 block w-full rounded-lg bg-slate-900 border border-slate-700 text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-xl bg-white border border-slate-300 text-slate-900 px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-650 focus:ring-2 focus:ring-indigo-600/10 transition-all duration-200 hover:border-slate-400 placeholder:text-slate-400 font-sans"
                   required
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white py-3 text-sm font-semibold shadow transition disabled:opacity-50"
+                className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 text-sm font-bold shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
               >
-                {loading ? "Sending..." : "Request OTP"}
+                {loading ? "Sending..." : `Continue as ${adminLoginMode.replace("_", " ")}`}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <form onSubmit={handleVerifyOtp} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-350">Verify phone {loginPhone}</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-650 mb-2">Verify phone {loginPhone}</label>
                 <input
                   type="text"
                   placeholder="Enter 6-digit OTP (e.g. 123456)"
                   value={loginOtp}
                   onChange={(e) => setLoginOtp(e.target.value)}
-                  className="mt-1 block w-full rounded-lg bg-slate-900 border border-slate-700 text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-center tracking-widest text-lg"
+                  className="w-full rounded-xl bg-white border border-slate-300 text-slate-900 px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-650 focus:ring-2 focus:ring-indigo-600/10 transition-all duration-200 hover:border-slate-400 placeholder:text-slate-400 font-mono text-center tracking-widest text-lg font-bold"
                   maxLength={6}
                   required
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={() => setOtpSent(false)}
-                  className="w-1/3 rounded-lg border border-slate-700 hover:bg-slate-800 py-3 text-sm font-semibold text-slate-300 transition"
+                  className="w-1/3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 py-3.5 text-sm font-semibold text-slate-700 transition-all duration-200"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-2/3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white py-3 text-sm font-semibold shadow transition disabled:opacity-50"
+                  className="w-2/3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 text-sm font-bold shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
                 >
                   {loading ? "Verifying..." : "Verify & Login"}
                 </button>
@@ -912,21 +1134,29 @@ export default function AdminDashboard() {
             </form>
           )}
 
-          <div className="mt-8 pt-6 border-t border-slate-700/50 flex flex-col gap-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">Local DB Target URL</label>
-              <input
-                type="text"
-                value={apiUrl}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setApiUrl(val);
-                  localStorage.setItem("quickgo_api_url", val);
-                }}
-                className="mt-1 block w-full rounded bg-slate-900 border border-slate-700 text-slate-300 px-3 py-1.5 text-xs font-mono focus:outline-none"
-              />
+          <details className="group mt-8 pt-6 border-t border-slate-200">
+            <summary className="flex items-center justify-between cursor-pointer list-none text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700 transition-colors select-none">
+              <span>Advanced Settings</span>
+              <svg className="w-3.5 h-3.5 transform group-open:rotate-180 transition-transform duration-200 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">Local DB Target URL</label>
+                <input
+                  type="text"
+                  value={apiUrl}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setApiUrl(val);
+                    localStorage.setItem("quickgo_api_url", val);
+                  }}
+                  className="w-full rounded-lg bg-white border border-slate-300 text-slate-800 px-3 py-2 text-xs font-mono focus:outline-none focus:border-indigo-600/50"
+                />
+              </div>
             </div>
-          </div>
+          </details>
         </div>
       </main>
     );
@@ -942,7 +1172,17 @@ export default function AdminDashboard() {
             <span className="rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600">Admin</span>
           </div>
           <nav className="grid gap-1">
-            {navItems.map((item) => (
+            {navItems
+              .filter((item) => {
+                const roles = userProfile?.roles ?? [];
+                const isSuper = roles.includes("SUPER_ADMIN");
+                const isZoneAdmin = roles.includes("ZONE_ADMIN");
+                if (isZoneAdmin && (item === "Role Management" || item === "Audit Logs")) {
+                  return false;
+                }
+                return true;
+              })
+              .map((item) => (
               <button
                 key={item}
                 onClick={() => {
@@ -1262,6 +1502,7 @@ export default function AdminDashboard() {
                                           <>
                                             <option value="ADMIN">ADMIN</option>
                                             <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                                            <option value="ZONE_ADMIN">ZONE_ADMIN</option>
                                           </>
                                         )}
                                       </select>
@@ -1281,6 +1522,71 @@ export default function AdminDashboard() {
                       </table>
                     </div>
                   </div>
+                  {/* Zone Admin Assignments Sub-panel for Super Admin */}
+                  {userProfile?.roles?.includes("SUPER_ADMIN") && (
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mt-6 animate-fade-in">
+                      <div className="border-b border-slate-200 px-5 py-4 flex justify-between items-center bg-slate-50/50">
+                        <div>
+                          <h2 className="text-lg font-bold text-slate-800">Zone Admin Assignments</h2>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Map designated Zone Admins to their respective Service Zones.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setShowAssignZoneModal(true)}
+                          className="rounded bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-semibold shadow transition"
+                        >
+                          Assign Admin to Zone
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-left text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                            <tr>
+                              <th className="px-5 py-3">Admin Name & Phone</th>
+                              <th className="px-5 py-3">Assigned Service Zone</th>
+                              <th className="px-5 py-3">Assigned At</th>
+                              <th className="px-5 py-3">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {zoneAssignments.length === 0 ? (
+                              <tr>
+                                <td className="px-5 py-8 text-center text-slate-500" colSpan={4}>
+                                  No zone assignments defined.
+                                </td>
+                              </tr>
+                            ) : (
+                              zoneAssignments.map((assignment) => (
+                                <tr key={assignment.id} className="hover:bg-slate-50/50">
+                                  <td className="px-5 py-4">
+                                    <div className="font-semibold text-slate-800">{assignment.adminUser?.name || "Unnamed User"}</div>
+                                    <div className="text-xs text-slate-500 font-mono mt-0.5">{assignment.adminUser?.phone}</div>
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    <span className="inline-flex items-center rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                                      {assignment.serviceZone?.name || "Unknown Zone"}
+                                    </span>
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    {new Date(assignment.assignedAt).toLocaleDateString()}
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    <button
+                                      onClick={() => handleRevokeZoneAssignment(assignment.id)}
+                                      className="rounded bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 px-2.5 py-1 text-xs font-semibold shadow-sm transition"
+                                    >
+                                      Revoke
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1414,13 +1720,31 @@ export default function AdminDashboard() {
                                 </span>
                               </td>
                               <td className="px-5 py-3">
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                   <button
                                     onClick={() => handleToggleVendorStatus(vendor.id, vendor.status)}
                                     className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
                                   >
-                                    {vendor.status === "APPROVED" ? "Pause" : "Approve"}
+                                    {vendor.status === "APPROVED" || vendor.status === "ACTIVE" ? "Pause" : "Approve"}
                                   </button>
+                                  {vendor.status !== "OFFBOARDED" && (
+                                    <>
+                                      <button
+                                        onClick={() => handleToggleSuspension("vendor", vendor.id, vendor.status === "SUSPENDED")}
+                                        className={`rounded px-2 py-1 text-xs font-semibold ${
+                                          vendor.status === "SUSPENDED" ? "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100" : "bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                                        }`}
+                                      >
+                                        {vendor.status === "SUSPENDED" ? "Reinstate" : "Suspend"}
+                                      </button>
+                                      <button
+                                        onClick={() => handleOffboard("vendor", vendor.id)}
+                                        className="rounded bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-xs font-semibold"
+                                      >
+                                        Offboard
+                                      </button>
+                                    </>
+                                  )}
                                   <button
                                     onClick={() => loadVendorCompliance(vendor.id)}
                                     className="rounded bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 text-xs font-semibold"
@@ -1490,13 +1814,31 @@ export default function AdminDashboard() {
                                 </span>
                               </td>
                               <td className="px-5 py-3">
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                   <button
                                     onClick={() => handleToggleRiderStatus(rider.id, rider.status)}
                                     className="rounded border border-slate-300 hover:bg-slate-50 px-2 py-1 text-xs font-semibold"
                                   >
-                                    {rider.status === "APPROVED" ? "Suspend" : "Approve"}
+                                    {rider.status === "APPROVED" ? "Pause" : "Approve"}
                                   </button>
+                                  {rider.status !== "OFFBOARDED" && (
+                                    <>
+                                      <button
+                                        onClick={() => handleToggleSuspension("rider", rider.id, rider.status === "SUSPENDED")}
+                                        className={`rounded px-2 py-1 text-xs font-semibold ${
+                                          rider.status === "SUSPENDED" ? "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100" : "bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                                        }`}
+                                      >
+                                        {rider.status === "SUSPENDED" ? "Reinstate" : "Suspend"}
+                                      </button>
+                                      <button
+                                        onClick={() => handleOffboard("rider", rider.id)}
+                                        className="rounded bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-xs font-semibold"
+                                      >
+                                        Offboard
+                                      </button>
+                                    </>
+                                  )}
                                   <button
                                     onClick={() => loadRiderKyc(rider.id)}
                                     className="rounded bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 text-xs font-semibold"
@@ -1604,7 +1946,23 @@ export default function AdminDashboard() {
                         ) : (
                           products.map((product) => (
                             <tr key={product.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-3 font-semibold">{product.name}</td>
+                              <td className="px-5 py-3 flex items-center gap-3">
+                                {product.imageUrl ? (
+                                  <img
+                                    src={resolveImageUrl(product.imageUrl)}
+                                    alt={product.name}
+                                    className="w-10 h-10 object-cover rounded-lg border border-slate-100 cursor-zoom-in hover:scale-105 transition-transform"
+                                    onClick={() => setPreviewImage(resolveImageUrl(product.imageUrl))}
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 flex-shrink-0">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  </div>
+                                )}
+                                <span className="font-semibold text-slate-900">{product.name}</span>
+                              </td>
                               <td className="px-5 py-3 text-slate-600">{product.vendor?.shopName || "Unknown"}</td>
                               <td className="px-5 py-3">{product.unit}</td>
                               <td className="px-5 py-3">
@@ -2229,6 +2587,7 @@ export default function AdminDashboard() {
                           <th className="px-5 py-3">City/State</th>
                           <th className="px-5 py-3">Center Coordinate</th>
                           <th className="px-5 py-3">Radius</th>
+                          <th className="px-5 py-3">Pincodes</th>
                           <th className="px-5 py-3">Status</th>
                           <th className="px-5 py-3">Actions</th>
                         </tr>
@@ -2236,7 +2595,7 @@ export default function AdminDashboard() {
                       <tbody className="divide-y divide-slate-100">
                         {serviceZones.length === 0 ? (
                           <tr>
-                            <td className="px-5 py-8 text-center text-slate-500" colSpan={6}>
+                            <td className="px-5 py-8 text-center text-slate-500" colSpan={7}>
                               No service zones defined.
                             </td>
                           </tr>
@@ -2249,6 +2608,28 @@ export default function AdminDashboard() {
                                 {zone.centerLatitude}, {zone.centerLongitude}
                               </td>
                               <td className="px-5 py-3">{zone.radiusKm} km</td>
+                              <td className="px-5 py-3">
+                                <div className="flex flex-wrap gap-1 items-center max-w-[240px]">
+                                  {(zone.pincodes || []).map((p: any) => (
+                                    <span key={p.pincode} className="inline-flex items-center gap-1 rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-xs text-slate-800">
+                                      {p.pincode}
+                                      <button
+                                        onClick={() => handleRemovePincode(zone.id, p.pincode)}
+                                        className="hover:text-red-650 font-bold ml-0.5 text-xs"
+                                        title="Remove pincode"
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                  <button
+                                    onClick={() => setShowPincodeModal(zone.id)}
+                                    className="rounded border border-indigo-300 hover:bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 transition"
+                                  >
+                                    + Add
+                                  </button>
+                                </div>
+                              </td>
                               <td className="px-5 py-3">
                                 <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
                                   zone.isActive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
@@ -2310,6 +2691,106 @@ export default function AdminDashboard() {
       </div>
 
       {/* Modals */}
+      {showPincodeModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl p-6">
+            <h2 className="text-xl font-bold mb-4 text-slate-800">Add Pincode Mapping</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAddPincode(showPincodeModal, newPincode);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Pincode</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 560001"
+                  maxLength={6}
+                  value={newPincode}
+                  onChange={(e) => setNewPincode(e.target.value)}
+                  className="w-full rounded-lg border border-slate-305 px-3 py-2 text-sm bg-white text-slate-850"
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPincodeModal(null);
+                    setNewPincode("");
+                  }}
+                  className="rounded-lg border border-slate-300 hover:bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold text-white shadow transition"
+                >
+                  Add Pincode
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAssignZoneModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl p-6">
+            <h2 className="text-xl font-bold mb-4 text-slate-800">Assign Admin to Zone</h2>
+            <form onSubmit={handleAssignZoneAdmin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Select User (ID or search above)</label>
+                <input
+                  type="text"
+                  placeholder="Paste User UUID"
+                  value={assignZoneAdminId}
+                  onChange={(e) => setAssignZoneAdminId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-305 px-3 py-2 text-sm bg-white text-slate-850"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Service Zone</label>
+                <select
+                  value={assignZoneId}
+                  onChange={(e) => setAssignZoneId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-305 px-3 py-2 text-sm bg-white text-slate-850"
+                  required
+                >
+                  <option value="">-- Select Service Zone --</option>
+                  {serviceZones.map((z) => (
+                    <option key={z.id} value={z.id}>{z.name} ({z.city})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAssignZoneModal(false);
+                    setAssignZoneAdminId("");
+                    setAssignZoneId("");
+                  }}
+                  className="rounded-lg border border-slate-300 hover:bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold text-white shadow transition"
+                >
+                  Confirm Assignment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showVendorModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full shadow-2xl p-6">
@@ -2728,19 +3209,36 @@ export default function AdminDashboard() {
                       </a>
                     </div>
                     {doc.status === "PENDING" && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleReviewCompliance(doc.id, "APPROVED", "FSSAI_VERIFIED")}
-                          className="rounded bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 text-xs font-semibold transition"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleReviewCompliance(doc.id, "REJECTED", "FSSAI_REJECTED")}
-                          className="rounded bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-semibold transition"
-                        >
-                          Reject
-                        </button>
+                      <div className="flex flex-col gap-2 w-full sm:w-auto">
+                        <input
+                          type="text"
+                          placeholder="Rejection reason..."
+                          value={rejectionReason}
+                          onChange={(e) => setRejectionReason(e.target.value)}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs bg-white text-slate-800 focus:outline-none"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              await handleReviewComplianceWithExplicitReason(doc.id, "APPROVED", "FSSAI_VERIFIED");
+                            }}
+                            className="rounded bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 text-xs font-semibold transition flex-1 text-center"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!rejectionReason) {
+                                alert("Please enter a rejection reason first.");
+                                return;
+                              }
+                              await handleReviewComplianceWithExplicitReason(doc.id, "REJECTED", "FSSAI_REJECTED", rejectionReason);
+                            }}
+                            className="rounded bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-semibold transition flex-1 text-center"
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2792,19 +3290,36 @@ export default function AdminDashboard() {
                       </a>
                     </div>
                     {doc.status === "PENDING" && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleReviewRiderKyc(doc.id, "APPROVED")}
-                          className="rounded bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 text-xs font-semibold transition"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleReviewRiderKyc(doc.id, "REJECTED")}
-                          className="rounded bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-semibold transition"
-                        >
-                          Reject
-                        </button>
+                      <div className="flex flex-col gap-2 w-full sm:w-auto">
+                        <input
+                          type="text"
+                          placeholder="Rejection reason..."
+                          value={rejectionReason}
+                          onChange={(e) => setRejectionReason(e.target.value)}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs bg-white text-slate-800 focus:outline-none"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              await handleReviewRiderKycWithExplicitReason(doc.id, "APPROVED");
+                            }}
+                            className="rounded bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 text-xs font-semibold transition flex-1 text-center"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!rejectionReason) {
+                                alert("Please enter a rejection reason first.");
+                                return;
+                              }
+                              await handleReviewRiderKycWithExplicitReason(doc.id, "REJECTED", rejectionReason);
+                            }}
+                            className="rounded bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-semibold transition flex-1 text-center"
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2938,6 +3453,34 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl p-4 max-w-lg w-full relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 text-slate-700 w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-sm transition"
+            >
+              ✕
+            </button>
+            <div className="flex flex-col items-center">
+              <img 
+                src={previewImage} 
+                alt="Product Preview" 
+                className="max-h-[70vh] w-full object-contain rounded-xl border border-slate-100"
+              />
+              <div className="mt-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Product Image Preview
               </div>
             </div>
           </div>

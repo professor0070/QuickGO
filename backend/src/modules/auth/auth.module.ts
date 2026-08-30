@@ -32,7 +32,7 @@ import { SmsOtpProvider } from "./otp/sms-otp.provider";
         if (provider === "sms" || provider === "production") {
           return new SmsOtpProvider();
         }
-        return new MockOtpProvider();
+        return new MockOtpProvider(config);
       }
     }
   ],

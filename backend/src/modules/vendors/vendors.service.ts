@@ -141,7 +141,7 @@ export class VendorsService {
       where: { productId, isActive: true },
       data: { isActive: false }
     });
-
+    
     const productPrice = await this.prisma.productPrice.create({
       data: {
         productId,
@@ -439,10 +439,10 @@ export class VendorsService {
     if (!key) {
       throw new BadRequestException("Security Blocker: Bank details encryption key is not configured.");
     }
-
+    
     const cryptoUtil = require("../../common/crypto.util");
     const encryptedAccountNumber = cryptoUtil.encryptAtRest(dto.account_number, key);
-
+    
     const version = await this.prisma.bankDetailVersion.create({
       data: {
         vendorId: vendor.id,

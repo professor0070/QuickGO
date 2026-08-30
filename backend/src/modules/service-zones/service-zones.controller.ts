@@ -23,13 +23,13 @@ export class ServiceZonesController {
     return this.serviceZones.checkServiceability(body);
   }
 
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "ZONE_ADMIN")
   @Get("admin/service-zones")
   adminList() {
     return this.serviceZones.adminList();
   }
 
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN")
   @Post("admin/service-zones")
   async adminCreate(
     @CurrentUser() user: RequestUser,
@@ -41,7 +41,7 @@ export class ServiceZonesController {
     };
   }
 
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN")
   @Patch("admin/service-zones/:zoneId")
   async adminUpdate(
     @CurrentUser() user: RequestUser,

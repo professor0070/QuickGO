@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quickgo_shared_ui/quickgo_ui.dart';
+import '../providers.dart';
+import '../utils.dart';
 
-class ProductCard extends StatelessWidget {
+class ProductCard extends ConsumerWidget {
   const ProductCard({
     super.key,
     required this.product,
@@ -11,9 +15,17 @@ class ProductCard extends StatelessWidget {
   final VoidCallback onAddToCart;
 
   @override
-  Widget build(BuildContext context) {
-    final name = product['name'] as String? ?? 'Product';
-    final unit = product['unit'] as String? ?? 'unit';
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rawName = product['name'] as String? ?? 'Product';
+    final name = rawName
+        .replaceAll(RegExp(r'^\d+[\.\:\-\s]+'), '')
+        .replaceAll(RegExp(r'^\[\d+\]\s*'), '');
+
+    final rawUnit = product['unit'] as String? ?? '';
+    final cleanUnit = (rawUnit.isEmpty || rawUnit.toLowerCase() == 'unit') ? '' : rawUnit;
+    final description = product['description'] as String? ?? '';
+    final subText = description.isNotEmpty ? description : cleanUnit;
+
     final isAvailable = product['isAvailable'] as bool? ?? true;
     final isApproved = product['isApproved'] as bool? ?? true;
 
@@ -27,85 +39,166 @@ class ProductCard extends StatelessWidget {
         : priceVal;
 
     final hasDiscount = mrpVal > priceVal;
+    final discountPercent = hasDiscount ? ((mrpVal - priceVal) / mrpVal * 100).round() : 0;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Container(
-                color: Colors.grey.shade100,
-                width: double.infinity,
-                child: const Icon(Icons.shopping_bag_outlined,
-                    size: 40, color: Colors.grey),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            Text(
-              unit,
-              style: const TextStyle(color: Colors.grey, fontSize: 11),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Text(
-                  '₹${priceVal.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {}, // Default click handler for card
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: quickGoSurface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: (product['imageUrl'] != null && (product['imageUrl'] as String).isNotEmpty)
+                            ? Image.network(
+                                resolveMediaUrl(
+                                  product['imageUrl'],
+                                  ref.read(apiClientProvider).baseUrl,
+                                ),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => const Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    size: 40,
+                                    color: quickGoTextLight,
+                                  ),
+                                ),
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return const Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  );
+                                },
+                              )
+                            : const Center(
+                                child: Icon(
+                                  Icons.shopping_bag_outlined,
+                                  size: 40,
+                                  color: quickGoTextLight,
+                                ),
+                              ),
+                      ),
+                    ),
+                    if (hasDiscount)
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '$discountPercent% OFF',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                if (hasDiscount) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    '₹${mrpVal.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      decoration: TextDecoration.lineThrough,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: quickGoTextDark,
+                ),
+              ),
+              if (subText.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: quickGoTextLight, fontSize: 12),
+                ),
               ],
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              width: double.infinity,
-              height: 28,
-              child: isAvailable && isApproved
-                  ? FilledButton(
-                      style: FilledButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4)),
+              const SizedBox(height: 6),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    Text(
+                      '₹${priceVal.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: quickGoGreen,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
                       ),
-                      onPressed: onAddToCart,
-                      child: const Text('Add to Cart',
-                          style: TextStyle(fontSize: 11)),
-                    )
-                  : OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4)),
-                      ),
-                      onPressed: null,
-                      child: const Text('Out of Stock',
-                          style: TextStyle(fontSize: 11)),
                     ),
-            ),
-          ],
+                    if (hasDiscount) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '₹${mrpVal.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: quickGoTextLight,
+                          decoration: TextDecoration.lineThrough,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 32,
+                child: isAvailable && isApproved
+                    ? FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: quickGoGreen,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        onPressed: onAddToCart,
+                        child: const Text(
+                          'Add',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      )
+                    : OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        onPressed: null,
+                        child: const Text(
+                          'OOS',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

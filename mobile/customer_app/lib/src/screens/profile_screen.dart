@@ -9,6 +9,8 @@ import 'package:quickgo_customer_app/src/screens/orders_screen.dart';
 import 'package:quickgo_customer_app/src/screens/support_screen.dart';
 import 'package:quickgo_customer_app/src/screens/login_screen.dart';
 import 'legal_screen.dart';
+import 'wallet_screen.dart';
+import 'odyssey_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -190,6 +192,24 @@ class ProfileScreen extends ConsumerWidget {
                 subtitle: const Text('View history and active order tracking', style: TextStyle(fontSize: 12)),
                 trailing: const Icon(Icons.chevron_right, color: quickGoTextLight),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const OrdersScreen())),
+              ),
+               const Divider(height: 1, color: quickGoLine),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.account_balance_wallet, color: quickGoGreen),
+                title: const Text('My Wallet', style: TextStyle(fontWeight: FontWeight.bold, color: quickGoTextDark)),
+                subtitle: const Text('View GO Coins, Cashback and transactions', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right, color: quickGoTextLight),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const WalletScreen())),
+              ),
+              const Divider(height: 1, color: quickGoLine),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.map, color: quickGoGreen),
+                title: const Text('My Odyssey', style: TextStyle(fontWeight: FontWeight.bold, color: quickGoTextDark)),
+                subtitle: const Text('Track streak, level, milestones and unlock rewards', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right, color: quickGoTextLight),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const OdysseyScreen())),
               ),
               const Divider(height: 1, color: quickGoLine),
               ListTile(

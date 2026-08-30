@@ -88,7 +88,7 @@ describe("UploadsService", () => {
       ]);
 
       const stripped = stripExifJpeg(jpegBuffer);
-
+      
       // The stripped buffer must still be valid JPEG but have no FFE1 APP1 block
       expect(stripped[0]).toBe(0xff);
       expect(stripped[1]).toBe(0xd8);

@@ -1,0 +1,54 @@
+{
+  "gate": "Gate 4B",
+  "name": "Authenticated Customer Read-Only Performance Confidence Baseline",
+  "timestamp": "2026-07-15T01:30:00Z",
+  "status": "PASS",
+  "config": {
+    "warmup": {
+      "vus": 2,
+      "duration": "30s"
+    },
+    "measured": {
+      "vus": 5,
+      "duration": "4m",
+      "pacing_seconds": 12
+    }
+  },
+  "results": {
+    "total_requests": 213,
+    "warmup_requests": 12,
+    "measured_requests": 200,
+    "setup_requests": 1,
+    "success_rate": 1.0,
+    "failure_rate": 0.0,
+    "endpoints": {
+      "customer_profile": {
+        "samples": 100,
+        "failed": 0,
+        "latency_ms": {
+          "min": 3.54,
+          "avg": 7.77,
+          "med": 5.61,
+          "p90": 6.94,
+          "p95": 7.63,
+          "p99": 80.71,
+          "max": 80.71
+        }
+      },
+      "customer_addresses": {
+        "samples": 100,
+        "failed": 0,
+        "latency_ms": {
+          "min": 2.21,
+          "avg": 4.80,
+          "med": 4.52,
+          "p90": 5.58,
+          "p95": 7.29,
+          "p99": 15.34,
+          "max": 15.34
+        }
+      }
+    }
+  },
+  "verdict": "PASS"
+}

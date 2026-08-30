@@ -43,6 +43,9 @@ describe("QuickGO MVP backend flow (e2e)", () => {
             format: String(file.mimetype).split("/").pop(),
             originalName: file.originalname
           };
+        },
+        delete: async (publicId: string, resourceType: string) => {
+          // Noop mock delete
         }
       })
       .compile();
@@ -901,7 +904,7 @@ describe("QuickGO MVP backend flow (e2e)", () => {
   it("hardens admin uploads with content validation, protected document storage, and audit logs", async () => {
     const adminToken = await login("9999999999");
     const setup = await createOperationalSetup(adminToken, "9411111111", "9411111112");
-    const jpeg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
     const pdf = Buffer.from("%PDF-1.4\n%QuickGO test document\n", "ascii");
 
     const productImage = await request(app.getHttpServer())
@@ -1325,5 +1328,250 @@ describe("QuickGO MVP backend flow (e2e)", () => {
     expect(finalDetail.body.data.status).toBe("COMPLETED");
     expect(finalDetail.body.data.paymentStatus).toBe("SUCCESS");
     expect(prisma.payoutCount()).toBe(2);
+  });
+
+  it("enforces strict avatar privacy isolation between Customer and Partner contexts", async () => {
+    const adminToken = await login("9999999999");
+    const setup = await createOperationalSetup(adminToken, "9888888888", "9877777777");
+
+    // Seed both CUSTOMER and RIDER roles for the test user
+    prisma.seedUserWithRoles(normalizeIndianPhone("9877777777"), ["RIDER", "CUSTOMER"]);
+
+    const customerToken = await login("9877777777", "CUSTOMER");
+    const partnerToken = await login("9877777777", "PARTNER");
+
+    // 1. Upload Customer Avatar
+    const uploadCustomer = await request(app.getHttpServer())
+      .post("/api/v1/profile/avatar")
+      .set("Authorization", bearer(customerToken))
+      .attach("file", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "avatar.jpg")
+      .expect(201);
+
+    const customerAvatarUrl = uploadCustomer.body.data.avatarUrl;
+    expect(customerAvatarUrl).toBeDefined();
+
+    // 2. Fetch Customer Profile -> should show Customer Avatar
+    const customerProfile = await request(app.getHttpServer())
+      .get("/api/v1/customer/profile")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+    expect(customerProfile.body.data.user.avatarUrl).toBe(customerAvatarUrl);
+
+    // 3. Fetch Rider Profile -> should NOT show Customer Avatar
+    const riderProfileBefore = await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(partnerToken))
+      .expect(200);
+    expect(riderProfileBefore.body.data.user.avatarUrl).toBeNull();
+
+    // 4. Upload Partner Avatar
+    const uploadPartner = await request(app.getHttpServer())
+      .post("/api/v1/profile/avatar")
+      .set("Authorization", bearer(partnerToken))
+      .attach("file", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "avatar.jpg")
+      .expect(201);
+
+    const partnerAvatarUrl = uploadPartner.body.data.avatarUrl;
+    expect(partnerAvatarUrl).toBeDefined();
+    expect(partnerAvatarUrl).not.toBe(customerAvatarUrl);
+
+    // 5. Fetch Rider Profile -> should show Partner Avatar
+    const riderProfileAfter = await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(partnerToken))
+      .expect(200);
+    expect(riderProfileAfter.body.data.user.avatarUrl).toBe(partnerAvatarUrl);
+
+    // 6. Fetch Customer Profile -> should still show Customer Avatar
+    const customerProfileAfter = await request(app.getHttpServer())
+      .get("/api/v1/customer/profile")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+    expect(customerProfileAfter.body.data.user.avatarUrl).toBe(customerAvatarUrl);
+
+    // 7. Delete Customer Avatar
+    await request(app.getHttpServer())
+      .delete("/api/v1/profile/avatar")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+
+    // Fetch Customer Profile -> Customer Avatar is null
+    const customerProfileDeleted = await request(app.getHttpServer())
+      .get("/api/v1/customer/profile")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+    expect(customerProfileDeleted.body.data.user.avatarUrl).toBeNull();
+
+    // Fetch Rider Profile -> Partner Avatar remains P1
+    const riderProfileDeleted = await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(partnerToken))
+      .expect(200);
+    expect(riderProfileDeleted.body.data.user.avatarUrl).toBe(partnerAvatarUrl);
+  });
+
+  it("enforces strict appContext fail-closed, cross-context restrictions, and legacy non-fallback invariants", async () => {
+    const normalized = normalizeIndianPhone("9877777777");
+    
+    // 1. Missing appContext rejected (controlled 400 validation error)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: normalized, otp: "123456" })
+      .expect(400);
+
+    // 2. Invalid appContext rejected (controlled 400 validation error)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: normalized, otp: "123456", appContext: "INVALID" })
+      .expect(400);
+
+    // Token Issuance Role Mismatch checks:
+    const customerOnlyPhone = normalizeIndianPhone("9555555555");
+    const partnerOnlyPhone = normalizeIndianPhone("9444444444");
+    const adminOnlyPhone = normalizeIndianPhone("9999999999");
+    prisma.seedUserWithRoles(customerOnlyPhone, ["CUSTOMER"]);
+    prisma.seedUserWithRoles(partnerOnlyPhone, ["RIDER"]);
+
+    // Ordinary Customer requests ADMIN -> rejected (401)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: customerOnlyPhone, otp: "123456", appContext: "ADMIN" })
+      .expect(401);
+
+    // Ordinary Customer requests PARTNER -> rejected (401)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: customerOnlyPhone, otp: "123456", appContext: "PARTNER" })
+      .expect(401);
+
+    // Ordinary Partner requests ADMIN -> rejected (401)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: partnerOnlyPhone, otp: "123456", appContext: "ADMIN" })
+      .expect(401);
+
+    // Eligible Partner requests PARTNER -> allowed (201)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: partnerOnlyPhone, otp: "123456", appContext: "PARTNER" })
+      .expect(201);
+
+    // Eligible Admin requests ADMIN -> allowed (201)
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/verify-otp")
+      .send({ phone: adminOnlyPhone, otp: "123456", appContext: "ADMIN" })
+      .expect(201);
+
+    // 3. Old JWT without context rejected (401 Unauthorized)
+    const { JwtService } = require("@nestjs/jwt");
+    const jwtService = app.get(JwtService);
+    const oldToken = jwtService.sign({ sub: "u1", phone: "9877777777", roles: ["CUSTOMER"] });
+
+    await request(app.getHttpServer())
+      .get("/api/v1/customer/profile")
+      .set("Authorization", bearer(oldToken))
+      .expect(401);
+
+    // 4. Customer token denied on Partner endpoint & Partner token denied on Customer endpoint
+    const adminToken = await login("9999999999", "ADMIN");
+    await createOperationalSetup(adminToken, "9888888888", "9877777777");
+    prisma.seedUserWithRoles(normalizeIndianPhone("9877777777"), ["RIDER", "CUSTOMER"]);
+
+    const customerToken = await login("9877777777", "CUSTOMER");
+    const partnerToken = await login("9877777777", "PARTNER");
+
+    // Customer token on Partner endpoint -> 403 Forbidden
+    await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(customerToken))
+      .expect(403);
+
+    // Partner token on Customer endpoint -> 403 Forbidden
+    await request(app.getHttpServer())
+      .get("/api/v1/customer/profile")
+      .set("Authorization", bearer(partnerToken))
+      .expect(403);
+
+    // 5. Partner A cannot access Partner B
+    const partnerTokenB = await login("9888888888", "PARTNER"); // Vendor Owner
+    await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(partnerTokenB))
+      .expect(403); // Vendor Owner lacks RIDER role, thus 403
+
+    // 6. No fallback to legacy avatarUrl
+    const dbUser = (prisma as any).store.users.find((u: any) => u.phone === normalizeIndianPhone("9877777777"));
+    if (dbUser) {
+      dbUser.avatarUrl = "http://legacy.com/pic.jpg";
+      dbUser.customerAvatarUrl = null;
+      dbUser.partnerAvatarUrl = null;
+    }
+
+    const customerProfile = await request(app.getHttpServer())
+      .get("/api/v1/customer/profile")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+    expect(customerProfile.body.data.user.avatarUrl).toBeNull(); // Must not fallback to legacy
+
+    const riderProfile = await request(app.getHttpServer())
+      .get("/api/v1/rider/profile")
+      .set("Authorization", bearer(partnerToken))
+      .expect(200);
+    expect(riderProfile.body.data.user.avatarUrl).toBeNull(); // Must not fallback to legacy
+  });
+
+  it("enforces strict private-media access rules on profile/avatar/media", async () => {
+    prisma.seedUserWithRoles(normalizeIndianPhone("9877777777"), ["RIDER", "CUSTOMER"]);
+    prisma.seedUserWithRoles(normalizeIndianPhone("9888888888"), ["CUSTOMER"]);
+
+    const customerToken = await login("9877777777", "CUSTOMER");
+    const partnerToken = await login("9877777777", "PARTNER");
+    const customerTokenB = await login("9888888888", "CUSTOMER");
+
+    // 1. No token -> Customer media -> 401 Unauthorized
+    await request(app.getHttpServer())
+      .get("/api/v1/profile/avatar/media")
+      .expect(401);
+
+    // 2. Customer token -> own Customer media -> 404 (when no avatar is set)
+    await request(app.getHttpServer())
+      .get("/api/v1/profile/avatar/media")
+      .set("Authorization", bearer(customerToken))
+      .expect(404);
+
+    // Upload Customer Avatar
+    const uploadCustomer = await request(app.getHttpServer())
+      .post("/api/v1/profile/avatar")
+      .set("Authorization", bearer(customerToken))
+      .attach("file", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "avatar.jpg")
+      .expect(201);
+
+    const customerAvatarUrl = uploadCustomer.body.data.avatarUrl;
+    expect(customerAvatarUrl).toBeDefined();
+
+    // 3. Customer token -> own Customer media -> 200 (returns image bytes)
+    const mediaResponse = await request(app.getHttpServer())
+      .get("/api/v1/profile/avatar/media")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
+    expect(mediaResponse.headers["content-type"]).toContain("image/jpeg");
+    expect(mediaResponse.body).toBeDefined();
+
+    // 4. Customer A (customerTokenB) -> Customer B media (cannot access B's media since endpoint resolves from token)
+    await request(app.getHttpServer())
+      .get("/api/v1/profile/avatar/media")
+      .set("Authorization", bearer(customerTokenB))
+      .expect(404);
+
+    // 5. Query parameter token authentication is now prohibited (should return 401 without Bearer header)
+    await request(app.getHttpServer())
+      .get(`/api/v1/profile/avatar/media?token=${customerToken}`)
+      .expect(401);
+
+    // Clean up
+    await request(app.getHttpServer())
+      .delete("/api/v1/profile/avatar")
+      .set("Authorization", bearer(customerToken))
+      .expect(200);
   });
 });

@@ -14,6 +14,8 @@
     "check": "npm run check:structure && npm run check:blocklist && npm run check:openapi",
     "backend:dev": "npm --workspace backend run start:dev",
     "backend:test": "npm --workspace backend run test",
+    "backend:migrate": "npm --workspace backend run migrate",
+    "migrate": "npm --workspace backend run migrate",
     "admin:dev": "npm --workspace web/admin_panel run dev",
     "admin:test": "npm --workspace web/admin_panel run test"
   },

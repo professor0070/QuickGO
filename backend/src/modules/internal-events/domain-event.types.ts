@@ -14,7 +14,7 @@ export type DomainEventMap = {
     userId: string;
     phone: string;
     roles: string[];
-    appContext: string;
+    appContext?: string;
   };
   "order.placed": {
     orderId: string;
@@ -95,16 +95,68 @@ export type DomainEventMap = {
   "compliance.privacy_request_updated": {
     requestId: string;
   };
-  "compliance.bank_details_submitted": {
-    versionId: string;
-    partnerId: string;
-    partnerType: "vendor" | "rider";
-  };
   "compliance.document_submitted": {
     documentId: string;
     partnerId: string;
     partnerType: "vendor" | "rider";
     type: string;
+  };
+  "compliance.document_approved": {
+    documentId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    type: string;
+  };
+  "compliance.document_rejected": {
+    documentId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    type: string;
+    reason: string;
+  };
+  "compliance.document_expiring_soon": {
+    documentId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    type: string;
+    expiresAt: string;
+  };
+  "compliance.document_expired": {
+    documentId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    type: string;
+  };
+  "compliance.bank_details_submitted": {
+    versionId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+  };
+  "compliance.bank_details_approved": {
+    versionId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+  };
+  "compliance.bank_details_rejected": {
+    versionId: string;
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    reason: string;
+  };
+  "compliance.partner_suspended": {
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    reason: string;
+  };
+  "compliance.partner_reinstated": {
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    reason: string;
+  };
+  "compliance.agreement_terminated": {
+    partnerId: string;
+    partnerType: "vendor" | "rider";
+    reason: string;
   };
 };
 

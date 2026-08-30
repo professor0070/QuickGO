@@ -75,7 +75,7 @@ export class UploadsController {
   ) {}
 
   @Post("admin/products/:productId/image")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "ZONE_ADMIN")
   async productImage(
     @CurrentUser() user: RequestUser,
     @Param("productId") productId: string,
@@ -94,7 +94,7 @@ export class UploadsController {
   }
 
   @Post("admin/vendors/:vendorId/compliance-documents/upload")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "ZONE_ADMIN")
   async vendorComplianceDocument(
     @CurrentUser() user: RequestUser,
     @Param("vendorId") vendorId: string,
@@ -113,7 +113,7 @@ export class UploadsController {
   }
 
   @Post("admin/riders/:riderId/kyc-documents/upload")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "ZONE_ADMIN")
   async riderKycDocument(
     @CurrentUser() user: RequestUser,
     @Param("riderId") riderId: string,

@@ -352,7 +352,6 @@ class _CustomerDrawer extends ConsumerWidget {
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent),
               ),
               onTap: () async {
-                Navigator.pop(context);
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -373,6 +372,9 @@ class _CustomerDrawer extends ConsumerWidget {
                 );
 
                 if (confirm == true) {
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
                   ref.read(sessionProvider.notifier).logout();
                 }
               },

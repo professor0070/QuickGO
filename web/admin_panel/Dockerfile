@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /usr/src/app
 
 # Copy root and workspace package files
@@ -20,7 +20,7 @@ RUN npm prune --omit=dev
 # Ensure directories required by runner exist
 RUN mkdir -p web/admin_panel/public web/admin_panel/node_modules
 
-FROM node:20-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 

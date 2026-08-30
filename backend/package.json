@@ -20,7 +20,7 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "^10.0.0",
     "@fastify/static": "^9.3.0",
-    "@nestjs/common": "^11.1.27",
+    "@nestjs/common": "^11.2.3",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.27",
     "@nestjs/jwt": "^11.0.2",
